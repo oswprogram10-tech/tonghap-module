@@ -45,6 +45,14 @@ for (const [name, spec] of Object.entries(config)) {
   const pattern = new RegExp(spec.asset);
   const asset = release.assets.find((a) => pattern.test(a.name));
   if (!asset) {
+    // 고정한 버전에 파일이 없으면 최근 릴리스 중 파일이 있는 버전을 알려 주고 멈춘다(자동으로 바꾸지 않음).
+    const list = await fetch(`https://api.github.com/repos/${spec.repo}/releases?per_page=40`, { headers });
+    if (list.ok) {
+      const candidates = (await list.json())
+        .filter((r) => r.assets.some((a) => pattern.test(a.name)))
+        .map((r) => `${r.tag_name} (${r.published_at?.slice(0, 10)})`);
+      console.error(`'${spec.asset}' 파일이 있는 최근 릴리스: ${candidates.join(', ') || '(없음)'}`);
+    }
     throw new Error(`${spec.repo} ${spec.tag}: '${spec.asset}'에 맞는 파일 없음. 있는 파일:\n${release.assets.map((a) => a.name).join('\n')}`);
   }
 
