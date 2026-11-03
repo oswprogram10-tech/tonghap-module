@@ -1,3 +1,4 @@
+mod backup;
 mod db;
 mod diag;
 
@@ -63,6 +64,10 @@ pub fn run() {
             db::portfolio::portfolio_class,
             db::settings::settings_get,
             db::settings::settings_set,
+            backup::backup_create,
+            backup::backup_inspect,
+            backup::backup_restore,
+            backup::backup_status,
         ])
         .run(tauri::generate_context!())
         .expect("앱 실행 중 오류");

@@ -1,6 +1,6 @@
 [package]
 name = "tonghap-module"
-version = "0.2.0"
+version = "0.3.0"
 description = "2022 개정 초등 통합교과 수업 지원 앱 (가칭 바슬즐 탐험대)"
 edition = "2021"
 rust-version = "1.80"
@@ -30,6 +30,8 @@ tokio = { version = "1", features = ["fs", "io-util", "time"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 uuid = { version = "1.20.0", features = ["v4"] }
 regex = "1.13.1"
+age = "0.12.1"
+tar = "0.4.46"
 
 [profile.release]
 codegen-units = 1

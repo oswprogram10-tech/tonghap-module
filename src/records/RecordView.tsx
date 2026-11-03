@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorText, recordsApi, type Observation, type Student } from './api';
+import BackupReminder from '../backup/BackupReminder';
 import ObservationForm from './ObservationForm';
 import { RecordsGate, type RecordsCtx } from './useRecords';
 import { formatDateTime, shorten, topicTitle } from './util';
 
-export default function RecordView() {
-  return <RecordsGate>{(ctx) => <RecordPanel ctx={ctx} />}</RecordsGate>;
+export default function RecordView({ onGoBackup }: { onGoBackup: () => void }) {
+  return <RecordsGate>{(ctx) => <RecordPanel ctx={ctx} onGoBackup={onGoBackup} />}</RecordsGate>;
 }
 
-function RecordPanel({ ctx }: { ctx: RecordsCtx }) {
+function RecordPanel({ ctx, onGoBackup }: { ctx: RecordsCtx; onGoBackup: () => void }) {
   const { cls, classes } = ctx;
   const [students, setStudents] = useState<Student[]>([]);
   const [recent, setRecent] = useState<Observation[]>([]);
@@ -50,6 +51,7 @@ function RecordPanel({ ctx }: { ctx: RecordsCtx }) {
 
   return (
     <main className="rec">
+      <BackupReminder onGoBackup={onGoBackup} />
       {error && <p className="diag-error">{error}</p>}
       <section className="diag-section">
         <div className="rec-row rec-wrap">

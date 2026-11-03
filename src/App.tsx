@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { SEMESTERS, areaOf, curriculum, standardsOf, topicsOf } from './curriculum';
 import type { TopicBook, Verification } from './curriculum/types';
+import BackupView from './backup/BackupView';
 import DiagView from './diag/DiagView';
 import PortfolioView from './records/PortfolioView';
 import RecordView from './records/RecordView';
@@ -12,7 +13,7 @@ interface AppInfo {
   arch: string;
 }
 
-type View = 'record' | 'portfolio' | 'topics' | 'tools' | 'diag';
+type View = 'record' | 'portfolio' | 'topics' | 'tools' | 'diag' | 'backup';
 
 const VERIFICATION_LABEL: Record<Verification, string> = {
   'unverified-spec': '원문 확인 필요',
@@ -28,6 +29,8 @@ export default function App() {
   const [topicId, setTopicId] = useState(topics[0].id);
   const topic = topics.find((t) => t.id === topicId) ?? topics[0];
   const appInfo = useAppInfo();
+  // 복원 후 학급·기록을 다시 불러오도록 화면을 새로 만든다.
+  const [dataKey, setDataKey] = useState(0);
 
   const selectSemester = (idx: number) => {
     setSemesterIdx(idx);
@@ -55,13 +58,16 @@ export default function App() {
           <button className={view === 'diag' ? 'tab active' : 'tab'} onClick={() => setView('diag')}>
             기기 점검
           </button>
+          <button className={view === 'backup' ? 'tab active' : 'tab'} onClick={() => setView('backup')}>
+            백업
+          </button>
         </nav>
       </header>
 
       {view === 'record' ? (
-        <RecordView />
+        <RecordView key={dataKey} onGoBackup={() => setView('backup')} />
       ) : view === 'portfolio' ? (
-        <PortfolioView />
+        <PortfolioView key={dataKey} />
       ) : view === 'topics' ? (
         <main className="topics-layout">
           <aside className="semesters" aria-label="학기 선택">
@@ -92,6 +98,8 @@ export default function App() {
         </main>
       ) : view === 'tools' ? (
         <ToolsView />
+      ) : view === 'backup' ? (
+        <BackupView onRestored={() => setDataKey((k) => k + 1)} />
       ) : (
         <DiagView />
       )}
