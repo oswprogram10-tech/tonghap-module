@@ -501,3 +501,33 @@ fn restoring_a_version_3_backup_migrates_attachments_to_the_transcript_schema() 
         .unwrap();
     assert_eq!((text.as_str(), status.as_str(), edited), ("옛 자막", "none", 0));
 }
+
+#[test]
+fn restoring_a_version_4_backup_migrates_it_to_the_parent_report_schema() {
+    let src = tmp("v4").join("data");
+    std::fs::create_dir_all(src.join("media")).unwrap();
+    let v4 = Connection::open(src.join("tonghap.db")).unwrap();
+    crate::db::migrations::apply_up_to(&v4, 4).unwrap();
+    v4.execute_batch(
+        "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c1', 2027, 1, '1반', 't');
+         INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s1', 'c1', 1, '김하늘', 't');
+         INSERT INTO observations (id, class_id, observed_at, topic_book_id, note, created_at, updated_at)
+           VALUES ('o1', 'c1', '2027-03-05T10:00:00+09:00', 'g1s1-school', '옛 기록', 't', 't');
+         INSERT INTO observation_students (observation_id, student_id) VALUES ('o1', 's1');",
+    )
+    .unwrap();
+    let src_db = Mutex::new(v4);
+    let file = make_backup(&src_db, &src);
+    assert_eq!(inspect(&file, PW).unwrap().schema_version, 4);
+
+    let (target, tdb) = seeded("v4-target");
+    run_restore(&tdb, &target, &file, PW).unwrap();
+
+    let conn = tdb.lock().unwrap();
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+    assert_eq!(version, crate::db::migrations::latest_version());
+    let note: String = conn.query_row("SELECT note FROM observations WHERE id = 'o1'", [], |r| r.get(0)).unwrap();
+    assert_eq!(note, "옛 기록");
+    let reports: i64 = conn.query_row("SELECT count(*) FROM parent_reports", [], |r| r.get(0)).unwrap();
+    assert_eq!(reports, 0);
+}

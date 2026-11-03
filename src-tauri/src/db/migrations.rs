@@ -175,6 +175,26 @@ ALTER TABLE attachments ADD COLUMN transcript_model TEXT;
 ALTER TABLE attachments ADD COLUMN transcript_edited INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE attachments ADD COLUMN transcribed_at TEXT;
 "#,
+    // 5: 학부모 리포트
+    r#"
+CREATE TABLE parent_reports (
+  id TEXT PRIMARY KEY,
+  class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  student_id TEXT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  topic_book_id TEXT,
+  period_from TEXT NOT NULL,
+  period_to TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  observation_ids TEXT NOT NULL DEFAULT '[]',
+  attachment_ids TEXT NOT NULL DEFAULT '[]',
+  quote_attachment_ids TEXT NOT NULL DEFAULT '[]',
+  exported_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (student_id, topic_book_id, period_from, period_to)
+);
+CREATE INDEX idx_parent_reports_class ON parent_reports(class_id);
+"#,
 ];
 
 pub fn latest_version() -> i64 {
@@ -211,10 +231,10 @@ mod tests {
         apply(&conn).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, latest_version());
-        assert_eq!(v, 4);
+        assert_eq!(v, 5);
         for table in [
             "classes", "students", "observations", "observation_students", "observation_standards", "observation_tags", "attachments", "settings",
-            "units", "unit_stages", "unit_sessions", "unit_session_standards", "custom_plays", "play_log", "habits", "habit_checks",
+            "units", "unit_stages", "unit_sessions", "unit_session_standards", "custom_plays", "play_log", "habits", "habit_checks", "parent_reports",
         ] {
             let n: i64 = conn
                 .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0))
@@ -290,7 +310,7 @@ mod tests {
                VALUES ('a', 'o', 'audio', '2027/03/a.webm', 'audio/webm', 10, '옛 자막', 't');",
         )
         .unwrap();
-        apply(&conn).unwrap();
+        apply_up_to(&conn, 4).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, 4);
         let row: (String, String, Option<String>, Option<String>, i64, Option<String>) = conn
@@ -302,5 +322,32 @@ mod tests {
             .unwrap();
         assert_eq!(row, ("옛 자막".to_string(), "none".to_string(), None, None, 0, None));
         assert!(conn.execute("UPDATE attachments SET transcript_status = 'bogus' WHERE id = 'a'", []).is_err());
+    }
+
+    #[test]
+    fn migration_5_keeps_version_4_data_and_adds_parent_reports() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        apply_up_to(&conn, 4).unwrap();
+        conn.execute_batch(
+            "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c', 2027, 1, '1반', 't');
+             INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s', 'c', 1, '김하늘', 't');",
+        )
+        .unwrap();
+        apply(&conn).unwrap();
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, 5);
+        let name: String = conn.query_row("SELECT name FROM students WHERE id = 's'", [], |r| r.get(0)).unwrap();
+        assert_eq!(name, "김하늘");
+        conn.execute(
+            "INSERT INTO parent_reports (id, class_id, student_id, period_from, period_to, created_at, updated_at)
+             VALUES ('r', 'c', 's', '2027-03-01', '2027-04-01', 't', 't')",
+            [],
+        )
+        .unwrap();
+        // 학생을 지우면 리포트도 함께 지워진다.
+        conn.execute("DELETE FROM students WHERE id = 's'", []).unwrap();
+        let n: i64 = conn.query_row("SELECT count(*) FROM parent_reports", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
     }
 }

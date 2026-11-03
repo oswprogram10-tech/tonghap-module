@@ -9,6 +9,7 @@ pub mod migrations;
 pub mod observations;
 pub mod plays;
 pub mod portfolio;
+pub mod reports;
 pub mod settings;
 pub mod students;
 pub mod units;
