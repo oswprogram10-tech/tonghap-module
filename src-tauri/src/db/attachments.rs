@@ -23,7 +23,44 @@ pub struct Attachment {
     pub mime: String,
     pub bytes: i64,
     pub transcript: Option<String>,
+    /// none | queued | running | done | failed
+    pub transcript_status: String,
+    pub transcript_error: Option<String>,
+    pub transcript_edited: bool,
+    pub transcript_model: Option<String>,
     pub created_at: String,
+}
+
+const SELECT: &str = "SELECT id, kind, rel_path, mime, bytes, transcript, created_at,
+                      transcript_status, transcript_error, transcript_edited, transcript_model FROM attachments";
+
+fn from_row(media: &Path, r: &rusqlite::Row<'_>) -> rusqlite::Result<Attachment> {
+    let rel: String = r.get(2)?;
+    Ok(Attachment {
+        id: r.get(0)?,
+        kind: r.get(1)?,
+        abs_path: abs_path(media, &rel).to_string_lossy().into_owned(),
+        rel_path: rel,
+        mime: r.get(3)?,
+        bytes: r.get(4)?,
+        transcript: r.get(5)?,
+        created_at: r.get(6)?,
+        transcript_status: r.get(7)?,
+        transcript_error: r.get(8)?,
+        transcript_edited: r.get::<_, i64>(9)? != 0,
+        transcript_model: r.get(10)?,
+    })
+}
+
+pub fn get(conn: &Connection, media: &Path, id: &str) -> DbResult<Attachment> {
+    conn.query_row(&format!("{SELECT} WHERE id = ?1"), [id], |r| from_row(media, r))
+        .map_err(|e| {
+            if e == rusqlite::Error::QueryReturnedNoRows {
+                "첨부를 찾을 수 없습니다".to_string()
+            } else {
+                format!("데이터베이스 오류: {e}")
+            }
+        })
 }
 
 pub fn abs_path(media: &Path, rel: &str) -> PathBuf {
@@ -31,27 +68,8 @@ pub fn abs_path(media: &Path, rel: &str) -> PathBuf {
 }
 
 pub fn list_for(conn: &Connection, media: &Path, observation_id: &str) -> DbResult<Vec<Attachment>> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, kind, rel_path, mime, bytes, transcript, created_at FROM attachments
-             WHERE observation_id = ?1 ORDER BY created_at, id",
-        )
-        .db()?;
-    let rows = stmt
-        .query_map([observation_id], |r| {
-            let rel: String = r.get(2)?;
-            Ok(Attachment {
-                id: r.get(0)?,
-                kind: r.get(1)?,
-                abs_path: abs_path(media, &rel).to_string_lossy().into_owned(),
-                rel_path: rel,
-                mime: r.get(3)?,
-                bytes: r.get(4)?,
-                transcript: r.get(5)?,
-                created_at: r.get(6)?,
-            })
-        })
-        .db()?;
+    let mut stmt = conn.prepare(&format!("{SELECT} WHERE observation_id = ?1 ORDER BY created_at, id")).db()?;
+    let rows = stmt.query_map([observation_id], |r| from_row(media, r)).db()?;
     rows.collect::<Result<_, _>>().db()
 }
 
@@ -109,10 +127,7 @@ fn insert(conn: &Connection, media: &Path, observation_id: &str, kind: &str, rel
         params![id, observation_id, kind, rel, mime, bytes as i64, now_iso()],
     )
     .db()?;
-    list_for(conn, media, observation_id)?
-        .into_iter()
-        .find(|a| a.id == id)
-        .ok_or_else(|| "첨부를 저장하지 못했습니다".to_string())
+    get(conn, media, &id)
 }
 
 pub fn add_file(conn: &Connection, media: &Path, observation_id: &str, path: &str) -> DbResult<Attachment> {
@@ -160,6 +175,44 @@ pub fn delete(conn: &Connection, media: &Path, id: &str) -> DbResult<()> {
     conn.execute("DELETE FROM attachments WHERE id = ?1", [id]).db()?;
     let _ = std::fs::remove_file(abs_path(media, &rel));
     Ok(())
+}
+
+/// 교사가 자막을 고친다. 빈 글이면 자막을 지우고 처음 상태(`none`)로 돌린다.
+pub fn set_transcript(conn: &Connection, media: &Path, id: &str, text: &str) -> DbResult<Attachment> {
+    let a = get(conn, media, id)?;
+    if a.kind != "audio" {
+        return Err("음성 메모만 자막을 고칠 수 있습니다".to_string());
+    }
+    if a.transcript_status == "queued" || a.transcript_status == "running" {
+        return Err("자막을 만드는 중에는 고칠 수 없습니다. 끝난 뒤에 고쳐 주세요".to_string());
+    }
+    let text = text.trim();
+    if text.is_empty() {
+        conn.execute(
+            "UPDATE attachments SET transcript = NULL, transcript_status = 'none', transcript_error = NULL,
+               transcript_model = NULL, transcript_edited = 0, transcribed_at = NULL WHERE id = ?1",
+            [id],
+        )
+        .db()?;
+    } else {
+        conn.execute(
+            "UPDATE attachments SET transcript = ?2, transcript_status = 'done', transcript_error = NULL,
+               transcript_edited = 1 WHERE id = ?1",
+            params![id, text],
+        )
+        .db()?;
+    }
+    get(conn, media, id)
+}
+
+#[tauri::command]
+pub fn attachment_get(db: State<Mutex<Connection>>, media: State<MediaDir>, id: String) -> DbResult<Attachment> {
+    get(&*lock(&db)?, &media.0, &id)
+}
+
+#[tauri::command]
+pub fn attachment_set_transcript(db: State<Mutex<Connection>>, media: State<MediaDir>, id: String, text: String) -> DbResult<Attachment> {
+    set_transcript(&*lock(&db)?, &media.0, &id, &text)
 }
 
 #[tauri::command]
@@ -239,5 +292,29 @@ mod tests {
         delete(&conn, &media, &a.id).unwrap();
         assert!(!Path::new(&a.abs_path).exists());
         assert_eq!(list_for(&conn, &media, &obs).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn set_transcript_marks_edited_and_empty_clears() {
+        let (conn, _class, _students, obs) = seed();
+        let media = tmp("media-tr");
+        let a = add_bytes(&conn, &media, &obs, "audio", "audio/webm", b"abc").unwrap();
+        assert_eq!((a.transcript_status.as_str(), a.transcript_edited), ("none", false));
+
+        let b = set_transcript(&conn, &media, &a.id, "  고친 글 \n둘째 줄 ").unwrap();
+        assert_eq!(b.transcript.as_deref(), Some("고친 글 \n둘째 줄"));
+        assert_eq!((b.transcript_status.as_str(), b.transcript_edited), ("done", true));
+
+        let c = set_transcript(&conn, &media, &a.id, "   ").unwrap();
+        assert_eq!((c.transcript, c.transcript_status.as_str(), c.transcript_edited), (None, "none", false));
+
+        conn.execute("UPDATE attachments SET transcript_status = 'running' WHERE id = ?1", [&a.id]).unwrap();
+        assert!(set_transcript(&conn, &media, &a.id, "x").is_err());
+
+        let src = tmp("src-tr").join("a.png");
+        std::fs::write(&src, b"img").unwrap();
+        let p = add_file(&conn, &media, &obs, src.to_str().unwrap()).unwrap();
+        assert!(set_transcript(&conn, &media, &p.id, "x").is_err());
+        assert!(set_transcript(&conn, &media, "nope", "x").is_err());
     }
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ACTIVITY_TAGS, errorText, recordsApi, type Attachment, type ClassInfo, type Observation, type Student } from './api';
 import AttachmentView from './Attachments';
+import { autoTranscribe } from '../stt/api';
 import AudioRecorder, { type Recording } from './AudioRecorder';
 import { unitsApi, type SessionOption } from '../units/api';
 import { todayString } from '../units/util';
@@ -112,6 +113,7 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
       const obs = editing ? await recordsApi.observationUpdate(editing.id, input) : await recordsApi.observationCreate(input);
 
       const failed: string[] = [];
+      const uploadedAudio: Attachment[] = [];
       for (const id of removed) {
         try {
           await recordsApi.attachmentDelete(id);
@@ -128,7 +130,7 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
       }
       for (const [i, r] of recordings.entries()) {
         try {
-          await recordsApi.attachmentAddBytes(obs.id, 'audio', r.mime, new Uint8Array(await r.blob.arrayBuffer()));
+          uploadedAudio.push(await recordsApi.attachmentAddBytes(obs.id, 'audio', r.mime, new Uint8Array(await r.blob.arrayBuffer())));
         } catch (e) {
           failed.push(`음성 메모 ${i + 1}: ${errorText(e)}`);
         }
@@ -139,6 +141,8 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
         setWarnings(failed);
       }
       recordings.forEach((r) => URL.revokeObjectURL(r.url));
+      // 저장을 기다리게 하지 않고 뒤에서 받아쓰기를 요청한다.
+      void autoTranscribe(uploadedAudio);
       if (!editing) {
         setSelected([]);
         setCodes([]);

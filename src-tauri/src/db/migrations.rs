@@ -166,6 +166,15 @@ CREATE TABLE habit_checks (
 );
 CREATE INDEX idx_habit_checks_day ON habit_checks(habit_id, checked_on);
 "#,
+    // 4: 음성 메모 자동 자막 상태
+    r#"
+ALTER TABLE attachments ADD COLUMN transcript_status TEXT NOT NULL DEFAULT 'none'
+  CHECK (transcript_status IN ('none', 'queued', 'running', 'done', 'failed'));
+ALTER TABLE attachments ADD COLUMN transcript_error TEXT;
+ALTER TABLE attachments ADD COLUMN transcript_model TEXT;
+ALTER TABLE attachments ADD COLUMN transcript_edited INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE attachments ADD COLUMN transcribed_at TEXT;
+"#,
 ];
 
 pub fn latest_version() -> i64 {
@@ -202,7 +211,7 @@ mod tests {
         apply(&conn).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, latest_version());
-        assert_eq!(v, 3);
+        assert_eq!(v, 4);
         for table in [
             "classes", "students", "observations", "observation_students", "observation_standards", "observation_tags", "attachments", "settings",
             "units", "unit_stages", "unit_sessions", "unit_session_standards", "custom_plays", "play_log", "habits", "habit_checks",
@@ -257,7 +266,7 @@ mod tests {
              INSERT INTO units (id, class_id, tool_id, title, created_at, updated_at) VALUES ('u', 'c', 'free', '단원', 't', 't');",
         )
         .unwrap();
-        apply(&conn).unwrap();
+        apply_up_to(&conn, 3).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, 3);
         let title: String = conn.query_row("SELECT title FROM units WHERE id = 'u'", [], |r| r.get(0)).unwrap();
@@ -266,5 +275,32 @@ mod tests {
             let n: i64 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0)).unwrap();
             assert_eq!(n, 1, "{table}");
         }
+    }
+
+    #[test]
+    fn migration_4_keeps_version_3_attachments_and_adds_transcript_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        apply_up_to(&conn, 3).unwrap();
+        conn.execute_batch(
+            "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c', 2027, 1, '1반', 't');
+             INSERT INTO observations (id, class_id, observed_at, topic_book_id, note, created_at, updated_at)
+               VALUES ('o', 'c', '2027-03-05T10:00:00+09:00', 'g1s1-school', '메모', 't', 't');
+             INSERT INTO attachments (id, observation_id, kind, rel_path, mime, bytes, transcript, created_at)
+               VALUES ('a', 'o', 'audio', '2027/03/a.webm', 'audio/webm', 10, '옛 자막', 't');",
+        )
+        .unwrap();
+        apply(&conn).unwrap();
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, 4);
+        let row: (String, String, Option<String>, Option<String>, i64, Option<String>) = conn
+            .query_row(
+                "SELECT transcript, transcript_status, transcript_error, transcript_model, transcript_edited, transcribed_at FROM attachments WHERE id = 'a'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+            )
+            .unwrap();
+        assert_eq!(row, ("옛 자막".to_string(), "none".to_string(), None, None, 0, None));
+        assert!(conn.execute("UPDATE attachments SET transcript_status = 'bogus' WHERE id = 'a'", []).is_err());
     }
 }

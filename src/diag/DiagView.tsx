@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import { STT_MODELS, sttApi, type SttStatus } from '../stt/api';
 import {
   diagApi,
   type DownloadProgress,
@@ -47,6 +48,8 @@ const STEP_TEXT: Record<StepStatus, string> = {
   skipped: '건너뜀',
 };
 
+const SUBTITLE_IDS: string[] = STT_MODELS.map((m) => m.id);
+
 const errorText = (e: unknown) => (typeof e === 'string' ? e : e instanceof Error ? e.message : JSON.stringify(e));
 
 export default function DiagView() {
@@ -74,6 +77,8 @@ function DiagPanel() {
   const [memo, setMemo] = useState('');
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [sttStatus, setSttStatus] = useState<SttStatus | null>(null);
+  const [sttError, setSttError] = useState<string | null>(null);
 
   const refreshModels = useCallback(() => {
     diagApi.models().then(setModels).catch((e) => setSysError(errorText(e)));
@@ -83,6 +88,7 @@ function DiagPanel() {
     diagApi.system().then(setSys).catch((e) => setSysError(errorText(e)));
     diagApi.engines().then(setEngines).catch((e) => setSysError(errorText(e)));
     refreshModels();
+    sttApi.status().then(setSttStatus).catch((e) => setSttError(errorText(e)));
   }, [refreshModels]);
 
   const busyModel = Object.values(progress).some(Boolean);
@@ -113,6 +119,16 @@ function DiagPanel() {
       setProgress((p) => ({ ...p, [m.id]: undefined }));
       refreshModels();
     }
+  };
+
+  const refreshStt = () => sttApi.status().then(setSttStatus).catch((e) => setSttError(errorText(e)));
+  const chooseSttModel = (id: string) => {
+    setSttError(null);
+    sttApi.setModel(id).then(refreshStt).catch((e) => setSttError(errorText(e)));
+  };
+  const toggleSttAuto = () => {
+    setSttError(null);
+    sttApi.setAuto(!(sttStatus?.auto ?? true)).then(refreshStt).catch((e) => setSttError(errorText(e)));
   };
 
   const ready = (id: string) => models.find((m) => m.id === id)?.ready ?? false;
@@ -220,7 +236,7 @@ function DiagPanel() {
           받은 파일을 「파일 선택」으로 가져오세요.
         </p>
         <ul className="model-list">
-          {models.map((m) => (
+          {models.filter((m) => !SUBTITLE_IDS.includes(m.id)).map((m) => (
             <ModelRow
               key={m.id}
               model={m}
@@ -232,6 +248,43 @@ function DiagPanel() {
             />
           ))}
         </ul>
+      </section>
+
+      <section className="diag-section" aria-label="음성 자막">
+        <h2>음성 자막</h2>
+        <p className="diag-hint">
+          관찰 기록의 음성 메모를 이 PC 안에서 글로 받아씁니다. 아이 목소리는 틀리게 받아쓸 수 있으니 기록 화면에서 고칠 수 있습니다.
+        </p>
+        <div className="stt-pick" role="group" aria-label="사용할 모델">
+          {STT_MODELS.map((o) => (
+            <button
+              key={o.id}
+              className="diag-secondary"
+              aria-pressed={sttStatus?.modelId === o.id}
+              onClick={() => chooseSttModel(o.id)}
+            >
+              {o.label} · {o.note}
+            </button>
+          ))}
+        </div>
+        <ul className="model-list">
+          {models.filter((m) => SUBTITLE_IDS.includes(m.id)).map((m) => (
+            <ModelRow
+              key={m.id}
+              model={m}
+              progress={progress[m.id]}
+              error={modelErrors[m.id]}
+              disabled={busyModel || running}
+              onDownload={() => download(m.id).then(refreshStt)}
+              onImport={() => importFile(m).then(refreshStt)}
+            />
+          ))}
+        </ul>
+        <button className="diag-secondary" aria-pressed={sttStatus?.auto ?? true} onClick={toggleSttAuto}>
+          자동 받아쓰기: {(sttStatus?.auto ?? true) ? '켜짐' : '꺼짐'}
+        </button>
+        {sttStatus && !sttStatus.engineReady && <p className="diag-error">자막 엔진(whisper-cli)이 없습니다.</p>}
+        {sttError && <p className="diag-error">{sttError}</p>}
       </section>
 
       <section className="diag-section">

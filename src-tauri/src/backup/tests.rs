@@ -467,3 +467,37 @@ fn restoring_a_version_2_backup_migrates_it_to_the_board_schema() {
         assert_eq!(n, 0, "{t}");
     }
 }
+
+#[test]
+fn restoring_a_version_3_backup_migrates_attachments_to_the_transcript_schema() {
+    let src = tmp("v3").join("data");
+    std::fs::create_dir_all(src.join("media")).unwrap();
+    let v3 = Connection::open(src.join("tonghap.db")).unwrap();
+    crate::db::migrations::apply_up_to(&v3, 3).unwrap();
+    v3.execute_batch(
+        "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c1', 2027, 1, '1반', 't');
+         INSERT INTO observations (id, class_id, observed_at, topic_book_id, note, created_at, updated_at)
+           VALUES ('o1', 'c1', '2027-03-05T10:00:00+09:00', 'g1s1-school', '옛 기록', 't', 't');
+         INSERT INTO attachments (id, observation_id, kind, rel_path, mime, bytes, transcript, created_at)
+           VALUES ('a1', 'o1', 'audio', '2027/03/a1.webm', 'audio/webm', 3, '옛 자막', 't');",
+    )
+    .unwrap();
+    std::fs::create_dir_all(src.join("media/2027/03")).unwrap();
+    std::fs::write(src.join("media/2027/03/a1.webm"), b"abc").unwrap();
+    let src_db = Mutex::new(v3);
+    let file = make_backup(&src_db, &src);
+    assert_eq!(inspect(&file, PW).unwrap().schema_version, 3);
+
+    let (target, tdb) = seeded("v3-target");
+    run_restore(&tdb, &target, &file, PW).unwrap();
+
+    let conn = tdb.lock().unwrap();
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+    assert_eq!(version, crate::db::migrations::latest_version());
+    let (text, status, edited): (String, String, i64) = conn
+        .query_row("SELECT transcript, transcript_status, transcript_edited FROM attachments WHERE id = 'a1'", [], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
+        .unwrap();
+    assert_eq!((text.as_str(), status.as_str(), edited), ("옛 자막", "none", 0));
+}

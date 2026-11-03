@@ -241,6 +241,10 @@ pub fn restore(db: &Mutex<Connection>, data_dir: &Path, path: &Path, password: &
         cb(progress("swapping", 0, 1));
         let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
         swap_data(db, data_dir, &staging, &stamp)?;
+        // 백업에 대기·진행 중인 자막이 있어도 이 앱에는 대기열이 없으므로 되돌린다.
+        if let Ok(conn) = db.lock() {
+            let _ = crate::stt::reset_pending(&conn);
+        }
         prune_before_restore(data_dir, KEEP_BEFORE_RESTORE);
         cb(progress("swapping", 1, 1));
         Ok(BackupSummary::from_manifest(&manifest))

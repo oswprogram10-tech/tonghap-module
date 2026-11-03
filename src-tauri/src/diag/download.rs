@@ -69,7 +69,7 @@ fn part_path(path: &Path) -> PathBuf {
 }
 
 /// 크기와 확인 표시 파일이 모두 맞으면 준비된 것으로 본다(매번 해시를 다시 계산하지 않기 위해).
-fn is_ready(path: &Path, spec: &ModelSpec) -> bool {
+pub fn is_ready(path: &Path, spec: &ModelSpec) -> bool {
     let size_ok = std::fs::metadata(path).map(|m| m.len() == spec.size).unwrap_or(false);
     let marker_ok = std::fs::read_to_string(marker_path(path))
         .map(|s| s.trim() == spec.sha256)

@@ -1,4 +1,5 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
+import Transcript from '../stt/Transcript';
 import type { Attachment } from './api';
 
 /** 저장된 첨부: 사진 썸네일과 음성 재생. 파일은 asset 프로토콜(미디어 폴더 한정)로 연다. */
@@ -23,7 +24,7 @@ export default function AttachmentView({
           ) : (
             <audio controls preload="none" src={convertFileSrc(a.absPath)} />
           )}
-          {a.transcript && <p className="rec-transcript">{a.transcript}</p>}
+          {a.kind === 'audio' && <Transcript attachment={a} />}
           {onRemove && (
             <button className="diag-secondary" onClick={() => onRemove(a)}>
               {a.kind === 'photo' ? '사진 빼기' : '녹음 빼기'}

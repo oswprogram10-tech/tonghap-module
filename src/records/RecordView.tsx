@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorText, recordsApi, type Observation, type Student } from './api';
+import ModelBanner from '../stt/ModelBanner';
 import BackupReminder from '../backup/BackupReminder';
 import ObservationForm from './ObservationForm';
 import { RecordsGate, type RecordsCtx } from './useRecords';
@@ -52,6 +53,7 @@ function RecordPanel({ ctx, onGoBackup }: { ctx: RecordsCtx; onGoBackup: () => v
   return (
     <main className="rec">
       <BackupReminder onGoBackup={onGoBackup} />
+      <ModelBanner />
       {error && <p className="diag-error">{error}</p>}
       <section className="diag-section">
         <div className="rec-row rec-wrap">

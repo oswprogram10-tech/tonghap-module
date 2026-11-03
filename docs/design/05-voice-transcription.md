@@ -51,7 +51,8 @@ ALTER TABLE attachments ADD COLUMN transcribed_at TEXT;
   - 상태가 바뀔 때마다 이벤트 `stt://updated` `{ attachmentId, status }`를 보낸다.
   - 앱 시작 때 `queued`·`running`으로 남아 있는 첨부는 `none`으로 되돌린다(임시 WAV가 사라졌으므로). 화면은 `none`이고 자동 받아쓰기가 켜져 있으면 다시 요청할 수 있다.
 - whisper-cli 실행은 `diag::bench`의 `run`(콘솔 창 없이, 시간 제한)을 공유 모듈로 옮겨 재사용한다. 인자:
-  `-m <모델> -f <wav> -l ko -t <min(물리코어,8)> -nt -np --prompt "초등학교 1, 2학년 아이가 말한 내용입니다."` 시간 제한 10분.
+  `-m <모델> -f <wav> -l ko -t <min(물리코어,8)> -nt -np` 시간 제한 10분.
+  - `--prompt`는 쓰지 않는다. whisper-cli(v1.9.2)는 윈도우에서 명령줄 인자를 시스템 코드 페이지(한국어 윈도우는 CP949)로 받지만 프롬프트는 UTF-8로 토큰화하므로 한국어 프롬프트가 깨진다. 파일 경로는 같은 코드 페이지로 열기 때문에 한글 경로도 동작한다.
 - 결과 정리(순수 함수 `clean_transcript`): 줄 앞뒤 공백 제거, `[BLANK_AUDIO]`·`[음악]`·`(웃음)`처럼 대괄호·소괄호만 있는 줄 제거, 연속 공백 하나로, 빈 결과면 `done`이 아니라 `failed`("말소리를 찾지 못했습니다").
 - 자막 실행 함수는 엔진 호출을 주입받게 해서(`&dyn Fn(&Path, &Path) -> Result<String, String>`) 테스트에서 가짜 엔진을 쓴다.
 

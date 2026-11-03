@@ -32,6 +32,10 @@ export interface Attachment {
   mime: string;
   bytes: number;
   transcript: string | null;
+  transcriptStatus: 'none' | 'queued' | 'running' | 'done' | 'failed';
+  transcriptError: string | null;
+  transcriptEdited: boolean;
+  transcriptModel: string | null;
   createdAt: string;
 }
 

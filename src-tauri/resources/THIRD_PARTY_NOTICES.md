@@ -9,6 +9,8 @@
 | samples/jfk.wav | 음성 인식 측정용 샘플(11초) | whisper.cpp 저장소에 포함된 파일 | https://github.com/ggml-org/whisper.cpp/tree/master/samples |
 | Qwen2.5 0.5B/1.5B Instruct GGUF (내려받기) | 언어 모델 측정 | Apache-2.0 | https://huggingface.co/Qwen |
 | Whisper base ggml (내려받기) | 음성 인식 측정 | MIT | https://huggingface.co/ggerganov/whisper.cpp |
+| Whisper small q5_1 ggml (내려받기) | 음성 메모 자동 자막(기본) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
+| Whisper base q5_1 ggml (내려받기) | 음성 메모 자동 자막(느린 PC용) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
 
 ## llama.cpp, whisper.cpp 라이선스 전문
 

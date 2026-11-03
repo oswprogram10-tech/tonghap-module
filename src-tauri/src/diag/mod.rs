@@ -68,6 +68,26 @@ pub const MODELS: &[ModelSpec] = &[
         sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
         license: "MIT",
     },
+    ModelSpec {
+        id: "whisper-small-q5",
+        label: "음성 자막 · 기본 (Whisper small, 양자화)",
+        kind: ModelKind::Stt,
+        file_name: "ggml-small-q5_1.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
+        size: 190_085_487,
+        sha256: "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+        license: "MIT",
+    },
+    ModelSpec {
+        id: "whisper-base-q5",
+        label: "음성 자막 · 느린 PC용 (Whisper base, 양자화)",
+        kind: ModelKind::Stt,
+        file_name: "ggml-base-q5_1.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin",
+        size: 59_707_625,
+        sha256: "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898",
+        license: "MIT",
+    },
 ];
 
 pub fn model_spec(id: &str) -> DiagResult<&'static ModelSpec> {

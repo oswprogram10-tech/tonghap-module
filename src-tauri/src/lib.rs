@@ -1,6 +1,8 @@
 mod backup;
 mod db;
 mod diag;
+mod engine;
+mod stt;
 
 use serde::Serialize;
 
@@ -30,6 +32,7 @@ pub fn run() {
             let (conn, media) = db::open(&data_dir)?;
             app.manage(std::sync::Mutex::new(conn));
             app.manage(media);
+            stt::start(app.handle())?;
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -60,6 +63,12 @@ pub fn run() {
             db::attachments::attachment_add_file,
             db::attachments::attachment_add_bytes,
             db::attachments::attachment_delete,
+            db::attachments::attachment_get,
+            db::attachments::attachment_set_transcript,
+            stt::stt_status,
+            stt::stt_set_model,
+            stt::stt_set_auto,
+            stt::stt_transcribe,
             db::portfolio::portfolio_student,
             db::portfolio::portfolio_class,
             db::units::unit_list,
