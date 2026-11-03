@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { errorText } from './records/api';
+import { openBoardWindow } from './board/window';
 import { SEMESTERS, areaOf, curriculum, standardsOf, topicsOf } from './curriculum';
 import type { TopicBook, Verification } from './curriculum/types';
 import BackupView from './backup/BackupView';
@@ -30,6 +32,7 @@ export default function App() {
   const [topicId, setTopicId] = useState(topics[0].id);
   const topic = topics.find((t) => t.id === topicId) ?? topics[0];
   const appInfo = useAppInfo();
+  const [boardError, setBoardError] = useState<string | null>(null);
   // 복원 후 학급·기록을 다시 불러오도록 화면을 새로 만든다.
   const [dataKey, setDataKey] = useState(0);
 
@@ -63,7 +66,21 @@ export default function App() {
             백업
           </button>
         </nav>
+        {isTauri() && (
+          <button
+            className="board-open"
+            onClick={() =>
+              openBoardWindow().then(
+                () => setBoardError(null),
+                (e) => setBoardError(errorText(e)),
+              )
+            }
+          >
+            칠판 모드
+          </button>
+        )}
       </header>
+      {boardError && <p className="diag-error">칠판 창을 열 수 없습니다: {boardError}</p>}
 
       {view === 'record' ? (
         <RecordView key={dataKey} onGoBackup={() => setView('backup')} />

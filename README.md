@@ -71,8 +71,9 @@ GitHub Actions에서도 `main`에 푸시할 때마다 빌드되며, 실행 결�
 
 ```
 data/curriculum/            교육과정 데이터(JSON)와 스키마
+data/plays/                 놀이 카드(JSON)와 스키마
 scripts/                    데이터 검증 스크립트
-src/                        화면(React + TypeScript). src/records/ 관찰 기록·포트폴리오, src/units/ 단원 빌더
+src/                        화면(React + TypeScript). src/records/ 관찰 기록·포트폴리오, src/units/ 단원 빌더, src/board/ 칠판 모드
 src-tauri/                  데스크톱 앱(Rust, Tauri 2)과 설치 파일 설정
 src-tauri/src/db/           관찰 기록 저장소(SQLite, 첨부 파일)
 src-tauri/src/diag/         기기 점검 기능(사양 조회, 모델 내려받기, 속도 측정)

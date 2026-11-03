@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
+import { emit } from '@tauri-apps/api/event';
+import { BOARD_CLASS_EVENT } from '../board/api';
 import { errorText, recordsApi, type ClassInfo } from './api';
 import { topicsOfGrade } from './util';
 import ClassManager from './ClassManager';
@@ -15,6 +17,11 @@ export interface RecordsCtx {
 
 const KEY_CLASS = 'currentClassId';
 const KEY_TOPIC = 'currentTopicBookId';
+
+/** 칠판 창이 열려 있으면 학급·주제책이 바뀌었음을 알려 다시 불러오게 한다. */
+function notifyBoard() {
+  emit(BOARD_CLASS_EVENT).catch((e) => console.error('칠판 알림 실패', e));
+}
 
 /**
  * 관찰 기록·포트폴리오 공통 바깥틀: 브라우저 미리보기 안내, 학급 불러오기,
@@ -56,6 +63,7 @@ function Gate({ children }: { children: (ctx: RecordsCtx) => ReactNode }) {
     const list = await recordsApi.classList();
     setClasses(list);
     setClassId((cur) => (cur && list.some((c) => c.id === cur) ? cur : (list[0]?.id ?? null)));
+    notifyBoard();
   }, []);
 
   useEffect(() => {
@@ -122,11 +130,17 @@ function Gate({ children }: { children: (ctx: RecordsCtx) => ReactNode }) {
 
   const selectClass = (id: string) => {
     setClassId(id);
-    recordsApi.settingsSet(KEY_CLASS, id).catch((e) => console.error('설정 저장 실패', e));
+    recordsApi
+      .settingsSet(KEY_CLASS, id)
+      .then(notifyBoard)
+      .catch((e) => console.error('설정 저장 실패', e));
   };
   const selectTopic = (id: string | null) => {
     setTopicId(id);
-    recordsApi.settingsSet(KEY_TOPIC, id).catch((e) => console.error('설정 저장 실패', e));
+    recordsApi
+      .settingsSet(KEY_TOPIC, id)
+      .then(notifyBoard)
+      .catch((e) => console.error('설정 저장 실패', e));
   };
   // 저장된 주제책이 이 학급 학년에 없으면 선택 안 함으로 본다.
   const validTopic = topicId && topicsOfGrade(cls.grade).some((t) => t.id === topicId) ? topicId : null;

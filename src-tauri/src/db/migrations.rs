@@ -125,6 +125,47 @@ CREATE TABLE unit_session_standards (
 ALTER TABLE observations ADD COLUMN unit_session_id TEXT REFERENCES unit_sessions(id) ON DELETE SET NULL;
 CREATE INDEX idx_observations_session ON observations(unit_session_id);
 "#,
+    // 3: 칠판 모드(사용자 놀이, 놀이 기록, 습관 신호등)
+    r#"
+CREATE TABLE custom_plays (
+  id TEXT PRIMARY KEY,
+  data TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE play_log (
+  id TEXT PRIMARY KEY,
+  class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  play_id TEXT NOT NULL,
+  played_at TEXT NOT NULL,
+  minutes INTEGER
+);
+CREATE INDEX idx_play_log_class ON play_log(class_id, played_at);
+
+CREATE TABLE habits (
+  id TEXT PRIMARY KEY,
+  class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  icon TEXT NOT NULL DEFAULT '',
+  starts_on TEXT,
+  ends_on TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_habits_class ON habits(class_id);
+
+CREATE TABLE habit_checks (
+  habit_id TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+  student_id TEXT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  checked_on TEXT NOT NULL,
+  done INTEGER NOT NULL CHECK (done IN (0, 1)),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (habit_id, student_id, checked_on)
+);
+CREATE INDEX idx_habit_checks_day ON habit_checks(habit_id, checked_on);
+"#,
 ];
 
 pub fn latest_version() -> i64 {
@@ -161,10 +202,10 @@ mod tests {
         apply(&conn).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, latest_version());
-        assert_eq!(v, 2);
+        assert_eq!(v, 3);
         for table in [
             "classes", "students", "observations", "observation_students", "observation_standards", "observation_tags", "attachments", "settings",
-            "units", "unit_stages", "unit_sessions", "unit_session_standards",
+            "units", "unit_stages", "unit_sessions", "unit_session_standards", "custom_plays", "play_log", "habits", "habit_checks",
         ] {
             let n: i64 = conn
                 .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0))
@@ -194,7 +235,7 @@ mod tests {
                VALUES ('o', 'c', '2027-03-05T10:00:00+09:00', 'g1s1-school', '메모', 't', 't');",
         )
         .unwrap();
-        apply(&conn).unwrap();
+        apply_up_to(&conn, 2).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, 2);
         let (note, session): (String, Option<String>) =
@@ -204,5 +245,26 @@ mod tests {
             .query_row("SELECT count(*) FROM pragma_table_info('observations') WHERE name = 'unit_session_id'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(has_col, 1);
+    }
+
+    #[test]
+    fn migration_3_keeps_version_2_data_and_adds_board_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        apply_up_to(&conn, 2).unwrap();
+        conn.execute_batch(
+            "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c', 2027, 1, '1반', 't');
+             INSERT INTO units (id, class_id, tool_id, title, created_at, updated_at) VALUES ('u', 'c', 'free', '단원', 't', 't');",
+        )
+        .unwrap();
+        apply(&conn).unwrap();
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, 3);
+        let title: String = conn.query_row("SELECT title FROM units WHERE id = 'u'", [], |r| r.get(0)).unwrap();
+        assert_eq!(title, "단원");
+        for table in ["custom_plays", "play_log", "habits", "habit_checks"] {
+            let n: i64 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0)).unwrap();
+            assert_eq!(n, 1, "{table}");
+        }
     }
 }

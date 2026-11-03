@@ -1,0 +1,502 @@
+/* 칠판 모드: 멀리서 보이게 큰 글자, 밝은 고대비 배경. 눌러야 하는 것은 96px 이상. */
+.bd {
+  --bd-ink: #111418;
+  --bd-bg: #fffef8;
+  --bd-line: #1f2328;
+  --bd-primary: #1e5eaa;
+  --bd-ok: #1a7f37;
+  min-height: 100vh;
+  background: var(--bd-bg);
+  color: var(--bd-ink);
+  font-size: 32px;
+  line-height: 1.4;
+  padding: 16px 28px 40px;
+}
+.bd button {
+  font-size: inherit;
+}
+.bd-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-bottom: 4px solid var(--bd-line);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+.bd-title {
+  font-size: 56px;
+  margin: 0 12px 0 0;
+}
+.bd-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.bd-tab {
+  min-height: 96px;
+  padding: 0 28px;
+  border: 3px solid var(--bd-line);
+  border-radius: 16px;
+  background: #fff;
+  font-weight: 700;
+}
+.bd-tab.on {
+  background: var(--bd-primary);
+  border-color: var(--bd-primary);
+  color: #fff;
+}
+.bd-top-end {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+.bd-mini {
+  min-height: 96px;
+  padding: 0 24px;
+  border: 3px solid var(--bd-primary);
+  border-radius: 16px;
+  background: #e8f1fb;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.bd-mini-hot {
+  background: #ffe1dc;
+  border-color: #b3261e;
+  color: #8c1d18;
+}
+.bd-small,
+.bd-opt,
+.bd-step {
+  min-height: 96px;
+  padding: 0 24px;
+  border: 3px solid var(--bd-line);
+  border-radius: 16px;
+  background: #fff;
+}
+.bd-teacher .bd-small {
+  min-height: 64px;
+  font-size: 22px;
+}
+.bd-opt.on {
+  background: var(--bd-primary);
+  border-color: var(--bd-primary);
+  color: #fff;
+  font-weight: 700;
+}
+.bd-big {
+  min-height: 112px;
+  min-width: 240px;
+  padding: 0 36px;
+  border: 4px solid var(--bd-line);
+  border-radius: 20px;
+  background: #fff;
+  font-weight: 700;
+}
+.bd-primary {
+  background: var(--bd-primary);
+  border-color: var(--bd-primary);
+  color: #fff;
+}
+.bd-ghost {
+  background: #f2f0e8;
+}
+.bd button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.bd button:focus-visible {
+  outline: 5px solid #f2a900;
+  outline-offset: 2px;
+}
+.bd-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.bd-seg {
+  display: flex;
+  gap: 8px;
+}
+.bd-grow {
+  flex: 1;
+}
+.bd-note {
+  font-size: 32px;
+  color: #3a4048;
+  margin: 12px 0;
+}
+.bd-hint {
+  font-size: 26px;
+  font-weight: 400;
+  color: #3a4048;
+}
+.bd-error {
+  background: #ffe1dc;
+  border: 3px solid #b3261e;
+  color: #8c1d18;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 28px;
+}
+.bd-h2 {
+  font-size: 72px;
+  margin: 8px 0;
+}
+.bd-h3 {
+  font-size: 40px;
+  margin: 12px 0;
+}
+.bd-chips {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0 16px;
+}
+.bd-chip {
+  border: 3px solid var(--bd-line);
+  border-radius: 999px;
+  padding: 2px 22px;
+  background: #fff;
+}
+.bd-actions {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+.bd-roulette {
+  text-align: center;
+}
+.bd-window {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 6px solid var(--bd-line);
+  border-radius: 28px;
+  background: #fff;
+  font-size: 80px;
+  font-weight: 800;
+  padding: 16px 32px;
+  margin: 12px 0;
+}
+.bd-window.spin {
+  background: #fff6cf;
+}
+.bd-roulette .bd-chips,
+.bd-roulette .bd-actions {
+  justify-content: center;
+}
+.bd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+.bd-play-card {
+  min-height: 140px;
+  border: 4px solid var(--bd-line);
+  border-radius: 20px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 20px;
+  text-align: left;
+}
+.bd-play-card span {
+  font-size: 26px;
+  color: #3a4048;
+}
+.bd-card .bd-rules {
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.5;
+  padding-left: 1.4em;
+  margin: 12px 0;
+}
+.bd-rules li {
+  margin: 8px 0;
+}
+.bd-safety {
+  background: #ffd84d;
+  border-top: 8px solid #111418;
+  border-bottom: 8px solid #111418;
+  padding: 10px 24px;
+  margin: 16px 0;
+  font-weight: 700;
+}
+.bd-safety ul {
+  margin: 4px 0 0;
+  padding-left: 1.2em;
+}
+.bd-materials {
+  font-size: 36px;
+}
+.bd-names {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+.bd-name {
+  min-height: 104px;
+  border: 4px solid var(--bd-line);
+  border-radius: 18px;
+  background: #fff;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+.bd-name small {
+  font-size: 24px;
+  font-weight: 400;
+}
+.bd-name.out {
+  opacity: 0.5;
+  background: #e5e2d8;
+  border-style: dashed;
+  text-decoration: line-through;
+}
+.bd-name.out small {
+  text-decoration: none;
+}
+.bd-name.done {
+  background: #d9f2df;
+  border-color: var(--bd-ok);
+}
+.bd-light {
+  font-size: 40px;
+  line-height: 1;
+}
+.bd-name.done .bd-light {
+  color: var(--bd-ok);
+}
+.bd-name:not(.done) .bd-light {
+  color: #6a717b;
+}
+.bd-count {
+  font-size: 44px;
+  margin-left: 12px;
+}
+.bd-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bd-step {
+  min-width: 96px;
+  font-weight: 700;
+}
+.bd-step-val {
+  min-width: 4.5em;
+  text-align: center;
+  font-weight: 700;
+}
+.bd-block {
+  border-top: 4px solid var(--bd-line);
+  margin-top: 24px;
+  padding-top: 8px;
+}
+.bd-teams {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+}
+.bd-team {
+  border: 6px solid;
+  border-radius: 24px;
+  padding: 8px 24px 16px;
+}
+.bd-team h3 {
+  font-size: 44px;
+  margin: 8px 0;
+}
+.bd-team h3 small {
+  font-size: 28px;
+  font-weight: 400;
+}
+.bd-team p {
+  font-size: 36px;
+  margin: 0;
+  font-weight: 700;
+}
+.bd-timer {
+  text-align: center;
+}
+.bd-timer .bd-bar,
+.bd-timer .bd-actions {
+  justify-content: center;
+}
+.bd-dial {
+  position: relative;
+  width: min(60vh, 520px);
+  aspect-ratio: 1;
+  margin: 8px auto;
+}
+.bd-dial svg {
+  width: 100%;
+  height: 100%;
+}
+.bd-ring-bg {
+  fill: #fff;
+  stroke: #d9d5c8;
+  stroke-width: 22;
+}
+.bd-ring {
+  fill: none;
+  stroke: var(--bd-primary);
+  stroke-width: 22;
+  stroke-linecap: round;
+}
+.bd-time {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: min(18vh, 150px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.bd-dial.hot .bd-ring {
+  stroke: #b3261e;
+}
+.bd-dial.hot .bd-time {
+  color: #b3261e;
+  animation: bd-pulse 1s ease-in-out infinite;
+}
+.bd-custom {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+.bd-flash {
+  animation: bd-blink 0.6s steps(2, jump-none) 6;
+}
+.bd-finish {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 254, 248, 0.94);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  z-index: 10;
+}
+.bd-finish p {
+  font-size: 96px;
+  font-weight: 800;
+  margin: 0;
+}
+@keyframes bd-blink {
+  0% { background: var(--bd-bg); }
+  50% { background: #ffd84d; }
+}
+@keyframes bd-pulse {
+  50% { transform: scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bd-flash,
+  .bd-dial.hot .bd-time {
+    animation: none;
+  }
+}
+/* 교사용 작은 화면 */
+.bd-teacher {
+  font-size: 22px;
+}
+.bd-t-note {
+  font-size: 22px;
+}
+.bd-t-list {
+  list-style: none;
+  padding: 0;
+}
+.bd-t-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid #c9c5b8;
+  padding: 8px 0;
+}
+.bd-t-form {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+}
+.bd-t-form label {
+  display: grid;
+  gap: 4px;
+}
+.bd-t-form input,
+.bd-t-form select,
+.bd-t-form textarea {
+  font: inherit;
+  padding: 8px 10px;
+  min-height: 48px;
+  border: 2px solid #5b6470;
+  border-radius: 8px;
+}
+.bd-t-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+.bd-t-check {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+}
+.bd-t-check input {
+  width: 28px;
+  height: 28px;
+}
+.bd-week td {
+  text-align: center;
+  font-size: 22px;
+}
+.bd-week th {
+  font-size: 20px;
+}
+.bd-w-yes {
+  color: #1a7f37;
+}
+.bd-w-no {
+  color: #6a717b;
+}
+.bd-w-none {
+  color: #a8adb5;
+}
+/* 메인 창 포트폴리오: 습관 실천율 */
+.bd-sum-row {
+  display: grid;
+  grid-template-columns: minmax(8em, 16em) 1fr auto;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+.bd-sum-bar {
+  height: 16px;
+  background: #e5e2d8;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.bd-sum-bar span {
+  display: block;
+  height: 100%;
+  background: #2f8a5b;
+}
+.bd-sum-val {
+  font-variant-numeric: tabular-nums;
+}

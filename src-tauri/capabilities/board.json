@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "board",
+  "description": "칠판 창 권한: 전체 화면 전환, 닫기",
+  "windows": ["board"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-maximize",
+    "core:window:allow-set-focus",
+    "core:window:allow-close"
+  ]
+}

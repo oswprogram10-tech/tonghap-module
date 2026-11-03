@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SEMESTERS, curriculum, topicsOf } from '../curriculum';
 import { errorText, recordsApi, type ClassOverview, type Observation, type Student, type StudentPortfolio } from './api';
+import { HabitSummaryPanel, HabitWeekPanel } from '../board/HabitWeek';
 import AttachmentView from './Attachments';
 import ClassManager from './ClassManager';
 import ObservationForm from './ObservationForm';
@@ -86,7 +87,10 @@ function PortfolioPanel({ ctx }: { ctx: RecordsCtx }) {
         </aside>
         <div className="rec-main">
           {selected === 'class' || !student ? (
-            <ClassTable overview={overview} grade={cls.grade} onPick={(id) => setSelected(id)} />
+            <>
+              <ClassTable overview={overview} grade={cls.grade} onPick={(id) => setSelected(id)} />
+              <HabitWeekPanel classId={cls.id} />
+            </>
           ) : (
             <StudentPanel key={student.id} cls={cls} student={student} students={students} onChanged={reload} />
           )}
@@ -276,6 +280,8 @@ function StudentPanel({
           </>
         )}
       </section>
+
+      <HabitSummaryPanel studentId={student.id} />
 
       <section className="diag-section">
         <h3>성취기준별 근거</h3>

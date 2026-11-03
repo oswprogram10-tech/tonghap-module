@@ -4,8 +4,10 @@
 
 pub mod attachments;
 pub mod classes;
+pub mod habits;
 pub mod migrations;
 pub mod observations;
+pub mod plays;
 pub mod portfolio;
 pub mod settings;
 pub mod students;

@@ -438,3 +438,32 @@ fn restoring_a_version_1_backup_migrates_it_to_the_latest_schema() {
     let fk: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
     assert_eq!(fk, 1);
 }
+
+#[test]
+fn restoring_a_version_2_backup_migrates_it_to_the_board_schema() {
+    let src = tmp("v2").join("data");
+    std::fs::create_dir_all(src.join("media")).unwrap();
+    let v2 = Connection::open(src.join("tonghap.db")).unwrap();
+    crate::db::migrations::apply_up_to(&v2, 2).unwrap();
+    v2.execute_batch(
+        "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c1', 2027, 1, '1반', 't');
+         INSERT INTO units (id, class_id, tool_id, title, created_at, updated_at) VALUES ('u1', 'c1', 'free', '옛 단원', 't', 't');",
+    )
+    .unwrap();
+    let src_db = Mutex::new(v2);
+    let file = make_backup(&src_db, &src);
+    assert_eq!(inspect(&file, PW).unwrap().schema_version, 2);
+
+    let (target, tdb) = seeded("v2-target");
+    run_restore(&tdb, &target, &file, PW).unwrap();
+
+    let conn = tdb.lock().unwrap();
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+    assert_eq!(version, crate::db::migrations::latest_version());
+    let title: String = conn.query_row("SELECT title FROM units WHERE id = 'u1'", [], |r| r.get(0)).unwrap();
+    assert_eq!(title, "옛 단원");
+    for t in ["custom_plays", "play_log", "habits", "habit_checks"] {
+        let n: i64 = conn.query_row(&format!("SELECT count(*) FROM {t}"), [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0, "{t}");
+    }
+}

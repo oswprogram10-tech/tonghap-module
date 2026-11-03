@@ -1340,3 +1340,15 @@ button {
   color: var(--accent);
   border-color: var(--accent-soft);
 }
+
+/* 메인 창 상단 오른쪽: 칠판 창 열기 */
+.board-open {
+  margin-left: auto;
+  min-height: var(--touch);
+  padding: 0 24px;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
