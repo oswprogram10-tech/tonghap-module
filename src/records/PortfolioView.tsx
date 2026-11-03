@@ -6,6 +6,8 @@ import AttachmentView from './Attachments';
 import ClassManager from './ClassManager';
 import ObservationForm from './ObservationForm';
 import { MatchList } from './RecordSearch';
+import BatchReports from '../reports/BatchReports';
+import ReportEditor from '../reports/ReportEditor';
 import { RecordsGate, type RecordsCtx } from './useRecords';
 import { formatDate, formatDateTime, topicTitle, topicsOfGrade } from './util';
 
@@ -21,6 +23,7 @@ function PortfolioPanel({ ctx }: { ctx: RecordsCtx }) {
   const [overview, setOverview] = useState<ClassOverview | null>(null);
   const [selected, setSelected] = useState<string | 'class'>('class');
   const [managing, setManaging] = useState(false);
+  const [report, setReport] = useState<{ studentId: string } | 'batch' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -89,14 +92,21 @@ function PortfolioPanel({ ctx }: { ctx: RecordsCtx }) {
         <div className="rec-main">
           {selected === 'class' || !student ? (
             <>
+              <button className="diag-secondary" onClick={() => setReport('batch')}>
+                학급 리포트 일괄 만들기
+              </button>
               <ClassTable overview={overview} grade={cls.grade} onPick={(id) => setSelected(id)} />
               <HabitWeekPanel classId={cls.id} />
             </>
           ) : (
-            <StudentPanel key={student.id} cls={cls} student={student} students={students} onChanged={reload} />
+            <StudentPanel key={student.id} cls={cls} student={student} students={students} onChanged={reload} onReport={() => setReport({ studentId: student.id })} />
           )}
         </div>
       </div>
+      {report === 'batch' && <BatchReports cls={cls} topicId={ctx.topicId} onClose={() => setReport(null)} />}
+      {report && report !== 'batch' && student && student.id === report.studentId && (
+        <ReportEditor key={student.id} cls={cls} student={student} topicId={ctx.topicId} onClose={() => setReport(null)} />
+      )}
     </main>
   );
 }
@@ -161,11 +171,13 @@ function StudentPanel({
   student,
   students,
   onChanged,
+  onReport,
 }: {
   cls: { id: string; grade: number; schoolYear: number; name: string; createdAt: string };
   student: Student;
   students: Student[];
   onChanged: () => Promise<void>;
+  onReport: () => void;
 }) {
   const [portfolio, setPortfolio] = useState<StudentPortfolio | null>(null);
   const [items, setItems] = useState<Observation[]>([]);
@@ -254,9 +266,14 @@ function StudentPanel({
     <div className="rec-student">
       {error && <p className="diag-error">{error}</p>}
       <section className="diag-section">
-        <h2>
-          {student.number}번 {student.name}
-        </h2>
+        <div className="rec-row rec-wrap">
+          <h2 className="rec-grow">
+            {student.number}번 {student.name}
+          </h2>
+          <button className="diag-secondary" onClick={onReport}>
+            학부모 리포트
+          </button>
+        </div>
         {portfolio && (
           <>
             <div className="rec-summary">

@@ -1,7 +1,7 @@
 {
   "name": "tonghap-module",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "@tauri-apps/plugin-opener": "^2.7.2",
+    "html-to-image": "1.11.13",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
