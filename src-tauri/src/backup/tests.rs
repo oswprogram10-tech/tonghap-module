@@ -124,7 +124,7 @@ fn backup_then_restore_into_other_data_dir_keeps_counts_and_bytes() {
     let sum = inspect(&file, PW).unwrap();
     assert_eq!(sum.counts, Counts { classes: 1, students: 3, observations: 1, attachments: 2 });
     assert_eq!(sum.file_count, 3);
-    assert_eq!(sum.app_version, "0.3.0");
+    assert_eq!(sum.app_version, env!("CARGO_PKG_VERSION"));
     assert_eq!(sum.schema_version, crate::db::migrations::latest_version());
 
     let dst = tmp("dst").join("data");
