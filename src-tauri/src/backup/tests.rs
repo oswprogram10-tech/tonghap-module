@@ -321,6 +321,8 @@ fn restore_keeps_previous_data_and_only_three_before_restore_folders() {
     let kept = Connection::open(old.join("tonghap.db")).unwrap();
     let n: i64 = kept.query_row("SELECT count(*) FROM students", [], |r| r.get(0)).unwrap();
     assert_eq!(n, old_counts.students);
+    // 윈도우는 열린 파일이 든 폴더를 지울 수 없으므로 정리 전에 닫는다.
+    drop(kept);
 
     for _ in 0..3 {
         run_restore(&tdb, &target, &file, PW).unwrap();
