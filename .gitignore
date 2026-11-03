@@ -10,3 +10,5 @@ models/
 *.bin
 # fetch-engines로 내려받는 실행 파일
 src-tauri/resources/engines/
+# 워커용 git worktree
+.claude/worktrees/

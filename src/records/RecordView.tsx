@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { errorText, recordsApi, type Observation, type Student } from './api';
 import ModelBanner from '../stt/ModelBanner';
 import BackupReminder from '../backup/BackupReminder';
 import ObservationForm from './ObservationForm';
+import RecordSearchBar, { EMPTY_FILTERS, MatchList, filtersToQuery, isEmptyQuery, type SearchFilters } from './RecordSearch';
 import { RecordsGate, type RecordsCtx } from './useRecords';
 import { formatDateTime, shorten, topicTitle } from './util';
+
+const PAGE = 20;
 
 export default function RecordView({ onGoBackup }: { onGoBackup: () => void }) {
   return <RecordsGate>{(ctx) => <RecordPanel ctx={ctx} onGoBackup={onGoBackup} />}</RecordsGate>;
@@ -16,28 +19,53 @@ function RecordPanel({ ctx, onGoBackup }: { ctx: RecordsCtx; onGoBackup: () => v
   const [recent, setRecent] = useState<Observation[]>([]);
   const [editing, setEditing] = useState<Observation | null>(null);
   const [editTopic, setEditTopic] = useState<string | null>(null);
+  const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
+  const [count, setCount] = useState<number | null>(null);
+  const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
+  const query = useMemo(() => filtersToQuery(cls.id, filters), [cls.id, filters]);
+  const searching = !isEmptyQuery(query);
+
+  useEffect(() => {
+    setFilters(EMPTY_FILTERS);
+  }, [cls.id]);
+
   const reload = useCallback(async () => {
     try {
-      const [st, obs] = await Promise.all([
+      const [st, obs, total] = await Promise.all([
         recordsApi.studentList(cls.id, false),
-        recordsApi.observationList({ classId: cls.id, limit: 20 }),
+        recordsApi.observationList({ ...query, limit: PAGE }),
+        isEmptyQuery(query) ? Promise.resolve(null) : recordsApi.observationCount(query),
       ]);
       setStudents(st);
       setRecent(obs);
+      setCount(total);
+      setMore(obs.length === PAGE);
       return obs;
     } catch (e) {
       setError(errorText(e));
       return [];
     }
-  }, [cls.id]);
+  }, [cls.id, query]);
   useEffect(() => {
     void reload();
   }, [reload]);
   useEffect(() => () => { if (toastTimer.current !== null) window.clearTimeout(toastTimer.current); }, []);
+
+  const loadMore = async () => {
+    const last = recent[recent.length - 1];
+    if (!last) return;
+    try {
+      const list = await recordsApi.observationList({ ...query, limit: PAGE, before: last.observedAt });
+      setRecent((cur) => [...cur, ...list]);
+      setMore(list.length === PAGE);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
 
   const flash = (message: string) => {
     setToast(message);
@@ -94,9 +122,10 @@ function RecordPanel({ ctx, onGoBackup }: { ctx: RecordsCtx; onGoBackup: () => v
         )}
       </section>
 
-      <section className="diag-section" aria-label="최근 기록">
-        <h2>최근 기록</h2>
-        {recent.length === 0 && <p className="diag-hint">아직 기록이 없습니다.</p>}
+      <section className="diag-section" aria-label="기록 찾기">
+        <h2>기록 찾기</h2>
+        <RecordSearchBar filters={filters} onChange={setFilters} students={students} count={count} />
+        {recent.length === 0 && <p className="diag-hint">{searching ? '조건에 맞는 기록이 없습니다.' : '아직 기록이 없습니다.'}</p>}
         <div className="rec-recent">
           {recent.map((o) => (
             <button key={o.id} className="rec-card" onClick={() => openEdit(o)}>
@@ -115,9 +144,15 @@ function RecordPanel({ ctx, onGoBackup }: { ctx: RecordsCtx; onGoBackup: () => v
                 {o.attachments.length > 0 && <span className="rec-tag">첨부 {o.attachments.length}</span>}
               </span>
               <span className="rec-card-note">{shorten(o.note, 60) || '(메모 없음)'}</span>
+              <MatchList matches={o.matches} text={query.text} />
             </button>
           ))}
         </div>
+        {more && (
+          <button className="diag-secondary" onClick={loadMore}>
+            더 보기
+          </button>
+        )}
       </section>
 
       {editing && (

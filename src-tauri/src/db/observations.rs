@@ -5,7 +5,8 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use regex::Regex;
-use rusqlite::{params, Connection};
+use rusqlite::types::Value;
+use rusqlite::{params, params_from_iter, Connection};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -55,6 +56,16 @@ pub struct Observation {
     pub deleted_at: Option<String>,
     pub students: Vec<ObservationStudent>,
     pub attachments: Vec<Attachment>,
+    /// 검색어가 있을 때만: 일치한 곳.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matches: Option<Vec<SearchMatch>>,
+}
+
+/// 검색 일치 위치. `field`는 note | transcript | tag | session | student.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct SearchMatch {
+    pub field: String,
+    pub snippet: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -73,6 +84,13 @@ pub struct ObservationQuery {
     pub limit: Option<i64>,
     /// 이 `observedAt`보다 이전 기록만(페이지 넘김).
     pub before: Option<String>,
+    /// 검색어(공백으로 나눈 낱말이 모두 들어 있어야 한다).
+    pub text: Option<String>,
+    /// 관찰 날짜 범위(`YYYY-MM-DD`, 양 끝 포함).
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub has_photo: Option<bool>,
+    pub has_audio: Option<bool>,
 }
 
 /// 주제책 id 형식 검사. 빈 값은 `None`. 단원 빌더와 공유한다.
@@ -221,6 +239,7 @@ pub fn get(conn: &Connection, media: &Path, id: &str) -> DbResult<Observation> {
                     deleted_at: r.get(7)?,
                     students: vec![],
                     attachments: vec![],
+                    matches: None,
                 })
             },
         )
@@ -321,31 +340,183 @@ pub fn purge(conn: &Connection, media: &Path, id: &str) -> DbResult<()> {
     Ok(())
 }
 
+const MAX_TERMS: usize = 5;
+const MAX_TERM_CHARS: usize = 30;
+const SNIPPET_CONTEXT: usize = 20;
+
+/// 검색어를 낱말로 나눈다(최대 5개, 낱말당 30자).
+fn search_terms(text: Option<&str>) -> Vec<String> {
+    text.map(|t| t.split_whitespace().take(MAX_TERMS).map(|w| w.chars().take(MAX_TERM_CHARS).collect()).collect()).unwrap_or_default()
+}
+
+fn like_pattern(term: &str) -> String {
+    let mut out = String::from("%");
+    for c in term.chars() {
+        if matches!(c, '%' | '_' | '\\') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('%');
+    out
+}
+
+fn check_date(label: &str, d: &Option<String>) -> DbResult<Option<String>> {
+    match d.as_deref().map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(v) => {
+            chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d").map_err(|_| format!("{label} 날짜 형식이 올바르지 않습니다"))?;
+            Ok(Some(v.to_string()))
+        }
+    }
+}
+
+/// 인자를 추가하고 그 자리 번호(`?N`)를 돌려준다.
+fn push_arg(args: &mut Vec<Value>, v: Value) -> usize {
+    args.push(v);
+    args.len()
+}
+
+/// 목록·개수가 함께 쓰는 WHERE 절과 인자. `paged`가 거짓이면 `before`를 무시한다.
+fn build_where(q: &ObservationQuery, paged: bool) -> DbResult<(String, Vec<Value>)> {
+    let mut args: Vec<Value> = Vec::new();
+    let mut sql = String::new();
+    let n = push_arg(&mut args, Value::Text(q.class_id.clone()));
+    sql += &format!("o.class_id = ?{n}");
+    if let Some(sid) = &q.student_id {
+        let n = push_arg(&mut args, Value::Text(sid.clone()));
+        sql += &format!(" AND EXISTS (SELECT 1 FROM observation_students os WHERE os.observation_id = o.id AND os.student_id = ?{n})");
+    }
+    if let Some(t) = &q.topic_book_id {
+        let n = push_arg(&mut args, Value::Text(t.clone()));
+        sql += &format!(" AND o.topic_book_id = ?{n}");
+    }
+    if let Some(c) = &q.standard_code {
+        let n = push_arg(&mut args, Value::Text(c.clone()));
+        sql += &format!(" AND EXISTS (SELECT 1 FROM observation_standards st WHERE st.observation_id = o.id AND st.standard_code = ?{n})");
+    }
+    sql += if q.deleted_only {
+        " AND o.deleted_at IS NOT NULL"
+    } else if q.include_deleted {
+        ""
+    } else {
+        " AND o.deleted_at IS NULL"
+    };
+    if let (true, Some(b)) = (paged, &q.before) {
+        let n = push_arg(&mut args, Value::Text(b.clone()));
+        sql += &format!(" AND o.observed_at < ?{n}");
+    }
+    if let Some(from) = check_date("시작", &q.from)? {
+        let n = push_arg(&mut args, Value::Text(from));
+        sql += &format!(" AND substr(o.observed_at, 1, 10) >= ?{n}");
+    }
+    if let Some(to) = check_date("끝", &q.to)? {
+        let n = push_arg(&mut args, Value::Text(to));
+        sql += &format!(" AND substr(o.observed_at, 1, 10) <= ?{n}");
+    }
+    for (flag, kind) in [(q.has_photo, "photo"), (q.has_audio, "audio")] {
+        if flag == Some(true) {
+            sql += &format!(" AND EXISTS (SELECT 1 FROM attachments a WHERE a.observation_id = o.id AND a.kind = '{kind}')");
+        }
+    }
+    for term in search_terms(q.text.as_deref()) {
+        let n = push_arg(&mut args, Value::Text(like_pattern(&term)));
+        sql += &format!(
+            " AND (o.note LIKE ?{n} ESCAPE '\\'
+               OR EXISTS (SELECT 1 FROM attachments a WHERE a.observation_id = o.id AND a.transcript LIKE ?{n} ESCAPE '\\')
+               OR EXISTS (SELECT 1 FROM observation_tags t WHERE t.observation_id = o.id AND t.tag LIKE ?{n} ESCAPE '\\')
+               OR EXISTS (SELECT 1 FROM unit_sessions us WHERE us.id = o.unit_session_id AND us.title LIKE ?{n} ESCAPE '\\')
+               OR EXISTS (SELECT 1 FROM observation_students os JOIN students s ON s.id = os.student_id
+                          WHERE os.observation_id = o.id AND s.name LIKE ?{n} ESCAPE '\\'))"
+        );
+    }
+    Ok((sql, args))
+}
+
+fn fold(c: char) -> char {
+    let mut it = c.to_lowercase();
+    match (it.next(), it.next()) {
+        (Some(l), None) => l,
+        _ => c,
+    }
+}
+
+/// `text`에서 낱말이 처음 나오는 곳 앞뒤 20자를 잘라 돌려준다(문자 기준, 잘린 쪽에 말줄임표).
+fn snippet_of(text: &str, terms: &[Vec<char>]) -> Option<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let folded: Vec<char> = chars.iter().map(|&c| fold(c)).collect();
+    let (pos, len) = terms
+        .iter()
+        .filter(|t| !t.is_empty() && t.len() <= folded.len())
+        .filter_map(|t| folded.windows(t.len()).position(|w| w == t.as_slice()).map(|p| (p, t.len())))
+        .min_by_key(|&(p, _)| p)?;
+    let start = pos.saturating_sub(SNIPPET_CONTEXT);
+    let end = (pos + len + SNIPPET_CONTEXT).min(chars.len());
+    let mut out = String::new();
+    if start > 0 {
+        out.push('…');
+    }
+    out.extend(&chars[start..end]);
+    if end < chars.len() {
+        out.push('…');
+    }
+    Some(out)
+}
+
+fn fill_matches(o: &mut Observation, words: &[String]) {
+    let terms: Vec<Vec<char>> = words.iter().map(|w| w.chars().map(fold).collect()).collect();
+    let mut found: Vec<SearchMatch> = Vec::new();
+    let mut add = |field: &str, text: &str| {
+        if let Some(snippet) = snippet_of(text, &terms) {
+            found.push(SearchMatch { field: field.to_string(), snippet });
+        }
+    };
+    add("note", &o.note);
+    for a in &o.attachments {
+        if let Some(t) = &a.transcript {
+            add("transcript", t);
+        }
+    }
+    for t in &o.tags {
+        add("tag", t);
+    }
+    if let Some(t) = &o.unit_session_title {
+        add("session", t);
+    }
+    for s in &o.students {
+        add("student", &s.name);
+    }
+    o.matches = Some(found);
+}
+
 pub fn list(conn: &Connection, media: &Path, q: &ObservationQuery) -> DbResult<Vec<Observation>> {
     let limit = q.limit.unwrap_or(50).clamp(1, 500);
-    let mut stmt = conn
-        .prepare(
-            "SELECT o.id FROM observations o
-             WHERE o.class_id = ?1
-               AND (?2 IS NULL OR EXISTS (SELECT 1 FROM observation_students os WHERE os.observation_id = o.id AND os.student_id = ?2))
-               AND (?3 IS NULL OR o.topic_book_id = ?3)
-               AND (?4 IS NULL OR EXISTS (SELECT 1 FROM observation_standards st WHERE st.observation_id = o.id AND st.standard_code = ?4))
-               AND (CASE WHEN ?5 THEN o.deleted_at IS NOT NULL WHEN ?6 THEN 1 ELSE o.deleted_at IS NULL END)
-               AND (?7 IS NULL OR o.observed_at < ?7)
-             ORDER BY o.observed_at DESC, o.created_at DESC, o.id
-             LIMIT ?8",
-        )
-        .db()?;
-    let ids: Vec<String> = stmt
-        .query_map(
-            params![q.class_id, q.student_id, q.topic_book_id, q.standard_code, q.deleted_only, q.include_deleted, q.before, limit],
-            |r| r.get(0),
-        )
-        .db()?
-        .collect::<Result<_, _>>()
-        .db()?;
+    let (wh, mut args) = build_where(q, true)?;
+    let n = push_arg(&mut args, Value::Integer(limit));
+    let sql = format!(
+        "SELECT o.id FROM observations o WHERE {wh}
+         ORDER BY o.observed_at DESC, o.created_at DESC, o.id LIMIT ?{n}"
+    );
+    let mut stmt = conn.prepare(&sql).db()?;
+    let ids: Vec<String> = stmt.query_map(params_from_iter(args), |r| r.get(0)).db()?.collect::<Result<_, _>>().db()?;
+    let words = search_terms(q.text.as_deref());
     let mut seen = HashSet::new();
-    ids.into_iter().filter(|id| seen.insert(id.clone())).map(|id| get(conn, media, &id)).collect()
+    ids.into_iter()
+        .filter(|id| seen.insert(id.clone()))
+        .map(|id| {
+            let mut o = get(conn, media, &id)?;
+            if !words.is_empty() {
+                fill_matches(&mut o, &words);
+            }
+            Ok(o)
+        })
+        .collect()
+}
+
+/// 같은 조건에 맞는 전체 개수(`before`·`limit` 무시).
+pub fn count(conn: &Connection, q: &ObservationQuery) -> DbResult<i64> {
+    let (wh, args) = build_where(q, false)?;
+    conn.query_row(&format!("SELECT count(*) FROM observations o WHERE {wh}"), params_from_iter(args), |r| r.get(0)).db()
 }
 
 #[tauri::command]
@@ -376,6 +547,11 @@ pub fn observation_purge(db: State<Mutex<Connection>>, media: State<MediaDir>, i
 #[tauri::command]
 pub fn observation_list(db: State<Mutex<Connection>>, media: State<MediaDir>, query: ObservationQuery) -> DbResult<Vec<Observation>> {
     list(&*lock(&db)?, &media.0, &query)
+}
+
+#[tauri::command]
+pub fn observation_count(db: State<Mutex<Connection>>, query: ObservationQuery) -> DbResult<i64> {
+    count(&*lock(&db)?, &query)
 }
 
 #[cfg(test)]
@@ -505,5 +681,197 @@ pub mod tests {
         let n: i64 = conn.query_row("SELECT count(*) FROM observation_students", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 0);
         assert!(purge(&conn, &media, &oid).is_err());
+    }
+
+    // ---- 검색 ----
+
+    fn q(cid: &str, text: &str) -> ObservationQuery {
+        ObservationQuery { class_id: cid.to_string(), text: Some(text.to_string()), ..Default::default() }
+    }
+
+    fn found(conn: &Connection, query: &ObservationQuery) -> Vec<String> {
+        list(conn, &media(), query).unwrap().into_iter().map(|o| o.id).collect()
+    }
+
+    fn add_obs(conn: &mut Connection, cid: &str, sid: &str, day: u32, note: &str, tags: &[&str]) -> Observation {
+        let mut inp = input(cid, &[sid]);
+        inp.observed_at = format!("2027-03-{day:02}T10:00:00+09:00");
+        inp.note = note.to_string();
+        inp.tags = tags.iter().map(|t| t.to_string()).collect();
+        create(conn, &media(), &inp).unwrap()
+    }
+
+    #[test]
+    fn search_by_note_transcript_tag_and_student_name() {
+        let (mut conn, cid, ids, seed_id) = seed();
+        let o = add_obs(&mut conn, &cid, &ids[2], 6, "블록을 쌓음", &["탐구"]);
+        let media = std::env::temp_dir().join(format!("tonghap-test-search-{}", new_id()));
+        let a = attachments::add_bytes(&conn, &media, &o.id, "audio", "audio/webm", b"zzz").unwrap();
+        attachments::set_transcript(&conn, &media, &a.id, "소방차가 빨리 달려요").unwrap();
+        // 메모(두 글자 낱말도 조사 앞에서 찾는다)
+        assert_eq!(found(&conn, &q(&cid, "블록")), vec![o.id.clone()]);
+        // 자막
+        let r = list(&conn, &media, &q(&cid, "소방차")).unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].matches.as_ref().unwrap()[0].field, "transcript");
+        // 태그
+        assert_eq!(found(&conn, &q(&cid, "탐구")), vec![o.id.clone()]);
+        // 학생 이름("다"는 학생 3)
+        assert_eq!(found(&conn, &q(&cid, "다")), vec![o.id.clone()]);
+        // 시드 기록은 메모 "친구를 도와줌"
+        assert_eq!(found(&conn, &q(&cid, "도와")), vec![seed_id]);
+        assert!(found(&conn, &q(&cid, "없는말")).is_empty());
+        // 검색어 없으면 matches 없음
+        let all = list(&conn, &media, &ObservationQuery { class_id: cid.clone(), text: Some("  ".into()), ..Default::default() }).unwrap();
+        assert_eq!(all.len(), 2);
+        assert!(all.iter().all(|o| o.matches.is_none()));
+        let _ = std::fs::remove_dir_all(&media);
+    }
+
+    #[test]
+    fn multiple_terms_are_anded_across_fields() {
+        let (mut conn, cid, ids, seed_id) = seed();
+        let o = add_obs(&mut conn, &cid, &ids[2], 6, "블록 놀이", &["협력"]);
+        // 낱말마다 다른 곳(메모, 태그, 학생 이름)에서 일치
+        assert_eq!(found(&conn, &q(&cid, "블록 협력 다")), vec![o.id.clone()]);
+        // 하나라도 없으면 제외
+        assert!(found(&conn, &q(&cid, "블록 없음")).is_empty());
+        // "협력"은 두 기록 모두 태그에 있다
+        assert_eq!(found(&conn, &q(&cid, "협력")).len(), 2);
+        assert_eq!(found(&conn, &q(&cid, "협력 친구")), vec![seed_id]);
+    }
+
+    #[test]
+    fn like_wildcards_are_literal() {
+        let (mut conn, cid, ids, _) = seed();
+        let a = add_obs(&mut conn, &cid, &ids[0], 6, "100% 완성", &[]);
+        let b = add_obs(&mut conn, &cid, &ids[0], 7, "a_b 이름", &[]);
+        let c = add_obs(&mut conn, &cid, &ids[0], 8, "경로 a\\b", &[]);
+        assert_eq!(found(&conn, &q(&cid, "%")), vec![a.id.clone()]);
+        assert_eq!(found(&conn, &q(&cid, "_")), vec![b.id.clone()]);
+        assert_eq!(found(&conn, &q(&cid, "a_b")), vec![b.id.clone()]);
+        assert_eq!(found(&conn, &q(&cid, "\\")), vec![c.id.clone()]);
+        assert!(found(&conn, &q(&cid, "블%기")).is_empty());
+    }
+
+    #[test]
+    fn term_limits_apply() {
+        let (conn, cid, _, _) = seed();
+        assert_eq!(search_terms(Some("a b c d e f g")).len(), 5);
+        assert_eq!(search_terms(Some(&"가".repeat(40)))[0].chars().count(), 30);
+        assert!(found(&conn, &q(&cid, "")).len() == 1);
+    }
+
+    #[test]
+    fn date_range_is_inclusive_and_attachments_filter() {
+        let (mut conn, cid, ids, _) = seed(); // 3/5
+        let d6 = add_obs(&mut conn, &cid, &ids[0], 6, "육", &[]);
+        let d7 = add_obs(&mut conn, &cid, &ids[0], 7, "칠", &[]);
+        let d8 = add_obs(&mut conn, &cid, &ids[0], 8, "팔", &[]);
+        let range = |from: &str, to: &str| ObservationQuery {
+            class_id: cid.clone(),
+            from: Some(from.into()),
+            to: Some(to.into()),
+            ..Default::default()
+        };
+        assert_eq!(found(&conn, &range("2027-03-06", "2027-03-08")), vec![d8.id.clone(), d7.id.clone(), d6.id.clone()]);
+        assert_eq!(found(&conn, &range("2027-03-07", "2027-03-07")), vec![d7.id.clone()]);
+        assert_eq!(found(&conn, &ObservationQuery { class_id: cid.clone(), from: Some("2027-03-08".into()), ..Default::default() }), vec![d8.id.clone()]);
+        assert_eq!(found(&conn, &ObservationQuery { class_id: cid.clone(), to: Some("2027-03-05".into()), ..Default::default() }).len(), 1);
+        assert!(list(&conn, &media(), &range("내일", "2027-03-08")).is_err());
+
+        let media = std::env::temp_dir().join(format!("tonghap-test-search-att-{}", new_id()));
+        attachments::add_bytes(&conn, &media, &d6.id, "audio", "audio/webm", b"a").unwrap();
+        attachments::add_bytes(&conn, &media, &d7.id, "audio", "audio/webm", b"a").unwrap();
+        // 사진은 파일 복사 경로가 필요하므로 행을 직접 넣는다.
+        conn.execute(
+            "INSERT INTO attachments (id, observation_id, kind, rel_path, mime, bytes, created_at) VALUES ('p1', ?1, 'photo', 'x.jpg', 'image/jpeg', 1, 'now')",
+            [&d7.id],
+        )
+        .unwrap();
+        let aud = ObservationQuery { class_id: cid.clone(), has_audio: Some(true), ..Default::default() };
+        assert_eq!(found(&conn, &aud), vec![d7.id.clone(), d6.id.clone()]);
+        let pho = ObservationQuery { class_id: cid.clone(), has_photo: Some(true), ..Default::default() };
+        assert_eq!(found(&conn, &pho), vec![d7.id.clone()]);
+        let both = ObservationQuery { class_id: cid.clone(), has_photo: Some(true), has_audio: Some(true), ..Default::default() };
+        assert_eq!(found(&conn, &both), vec![d7.id.clone()]);
+        let off = ObservationQuery { class_id: cid.clone(), has_photo: Some(false), ..Default::default() };
+        assert_eq!(found(&conn, &off).len(), 4);
+        let _ = std::fs::remove_dir_all(&media);
+    }
+
+    #[test]
+    fn search_combines_with_existing_filters() {
+        let (mut conn, cid, ids, _) = seed();
+        let mut inp = input(&cid, &[&ids[2]]);
+        inp.note = "공통 낱말".into();
+        inp.topic_book_id = Some("g1s2-x".into());
+        inp.standard_codes = vec!["[2슬02-04]".into()];
+        let o = create(&mut conn, &media(), &inp).unwrap();
+        let mut inp2 = input(&cid, &[&ids[0]]);
+        inp2.note = "공통 낱말".into();
+        create(&mut conn, &media(), &inp2).unwrap();
+        let base = || q(&cid, "공통");
+        assert_eq!(found(&conn, &base()).len(), 2);
+        assert_eq!(found(&conn, &ObservationQuery { student_id: Some(ids[2].clone()), ..base() }), vec![o.id.clone()]);
+        assert_eq!(found(&conn, &ObservationQuery { topic_book_id: Some("g1s2-x".into()), ..base() }), vec![o.id.clone()]);
+        assert_eq!(found(&conn, &ObservationQuery { standard_code: Some("[2슬02-04]".into()), ..base() }), vec![o.id]);
+        assert!(found(&conn, &ObservationQuery { student_id: Some(ids[1].clone()), ..base() }).is_empty());
+    }
+
+    #[test]
+    fn search_excludes_deleted_and_trash_mode_searches_trash_only() {
+        let (mut conn, cid, ids, seed_id) = seed();
+        let o = add_obs(&mut conn, &cid, &ids[0], 6, "친구와 놀이", &[]);
+        delete(&conn, &o.id).unwrap();
+        assert_eq!(found(&conn, &q(&cid, "친구")), vec![seed_id.clone()]);
+        let trash = ObservationQuery { deleted_only: true, ..q(&cid, "친구") };
+        assert_eq!(found(&conn, &trash), vec![o.id.clone()]);
+        assert_eq!(count(&conn, &trash).unwrap(), 1);
+        assert_eq!(count(&conn, &q(&cid, "친구")).unwrap(), 1);
+    }
+
+    #[test]
+    fn count_ignores_paging() {
+        let (mut conn, cid, ids, _) = seed();
+        for day in 6..=9 {
+            add_obs(&mut conn, &cid, &ids[0], day, "기록", &[]);
+        }
+        let query = ObservationQuery { limit: Some(2), before: Some("2027-03-08T10:00:00+09:00".into()), ..q(&cid, "") };
+        assert_eq!(list(&conn, &media(), &query).unwrap().len(), 2);
+        assert_eq!(count(&conn, &query).unwrap(), 5);
+        assert_eq!(count(&conn, &ObservationQuery { text: Some("기록".into()), ..query }).unwrap(), 4);
+    }
+
+    #[test]
+    fn snippet_uses_chars_and_ellipsis() {
+        let t = |s: &str| vec![s.chars().collect::<Vec<char>>()];
+        // 앞이 짧으면 앞 말줄임표 없음, 뒤가 길면 뒤 말줄임표
+        let long = format!("블록{}", "가".repeat(30));
+        let s = snippet_of(&long, &t("블록")).unwrap();
+        assert_eq!(s, format!("블록{}…", "가".repeat(20)));
+        // 앞뒤 모두 길면 양쪽 말줄임표, 앞 20자 + 낱말 + 뒤 20자
+        let mid = format!("{}소방서{}", "나".repeat(25), "다".repeat(25));
+        let s = snippet_of(&mid, &t("소방서")).unwrap();
+        assert_eq!(s, format!("…{}소방서{}…", "나".repeat(20), "다".repeat(20)));
+        // 전체가 짧으면 그대로
+        assert_eq!(snippet_of("짧은 글", &t("글")).unwrap(), "짧은 글");
+        // 영문 대소문자 무시, 없으면 None
+        assert_eq!(snippet_of("Hello World", &t("world")).unwrap(), "Hello World");
+        assert!(snippet_of("가나다", &t("라")).is_none());
+        // 여러 낱말 중 먼저 나오는 곳
+        let both = vec!["다".chars().collect::<Vec<_>>(), "가".chars().collect::<Vec<_>>()];
+        assert!(snippet_of("가나다", &both).is_some());
+    }
+
+    #[test]
+    fn matches_report_each_field_with_snippet() {
+        let (mut conn, cid, ids, _) = seed();
+        let o = add_obs(&mut conn, &cid, &ids[2], 6, "협력해서 블록 쌓기", &["협력"]);
+        let r = list(&conn, &media(), &q(&cid, "협력")).unwrap();
+        let m = r.iter().find(|x| x.id == o.id).unwrap().matches.clone().unwrap();
+        assert_eq!(m.iter().map(|x| x.field.as_str()).collect::<Vec<_>>(), ["note", "tag"]);
+        assert_eq!(m[0].snippet, "협력해서 블록 쌓기");
+        assert_eq!(m[1].snippet, "협력");
     }
 }

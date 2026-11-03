@@ -1061,6 +1061,22 @@ mod tests {
     }
 
     #[test]
+    fn observation_search_matches_session_title() {
+        let (mut conn, cid, ids, _) = seed();
+        let u = new_unit(&mut conn, &cid);
+        let s = create_session(&mut conn, &sin(&u, 0, "소방서 견학")).unwrap();
+        let mut inp = obs_input(&cid, &[&ids[0]]);
+        inp.unit_session_id = Some(s.id.clone());
+        inp.note = "메모".into();
+        let o = observations::create(&mut conn, &media(), &inp).unwrap();
+        let q = ObservationQuery { class_id: cid, text: Some("소방서".into()), ..Default::default() };
+        let r = observations::list(&conn, &media(), &q).unwrap();
+        assert_eq!(r.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), [o.id.as_str()]);
+        let m = r[0].matches.as_ref().unwrap();
+        assert_eq!((m[0].field.as_str(), m[0].snippet.as_str()), ("session", "소방서 견학"));
+    }
+
+    #[test]
     fn deleting_unit_keeps_observation_and_clears_link() {
         let (mut conn, cid, ids, _) = seed();
         let u = new_unit(&mut conn, &cid);

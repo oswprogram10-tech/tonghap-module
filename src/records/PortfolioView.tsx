@@ -5,6 +5,7 @@ import { HabitSummaryPanel, HabitWeekPanel } from '../board/HabitWeek';
 import AttachmentView from './Attachments';
 import ClassManager from './ClassManager';
 import ObservationForm from './ObservationForm';
+import { MatchList } from './RecordSearch';
 import { RecordsGate, type RecordsCtx } from './useRecords';
 import { formatDate, formatDateTime, topicTitle, topicsOfGrade } from './util';
 
@@ -172,6 +173,8 @@ function StudentPanel({
   const [topicFilter, setTopicFilter] = useState('');
   const [codeFilter, setCodeFilter] = useState<string | null>(null);
   const [trash, setTrash] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [text, setText] = useState('');
   const [editing, setEditing] = useState<Observation | null>(null);
   const [editTopic, setEditTopic] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -183,10 +186,11 @@ function StudentPanel({
       topicBookId: topicFilter || undefined,
       standardCode: codeFilter ?? undefined,
       deletedOnly: trash,
+      text: text || undefined,
       limit: PAGE,
       before,
     }),
-    [cls.id, student.id, topicFilter, codeFilter, trash],
+    [cls.id, student.id, topicFilter, codeFilter, trash, text],
   );
 
   const loadFirst = useCallback(async () => {
@@ -346,6 +350,37 @@ function StudentPanel({
             {trash ? '타임라인 보기' : '휴지통 보기'}
           </button>
         </div>
+        <form
+          className="rec-row rec-search-box"
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setText(draft.trim());
+          }}
+        >
+          <input
+            type="search"
+            className="rec-grow rec-search-input"
+            aria-label={`${student.name} 기록 검색어`}
+            placeholder={`${student.name}의 기록에서 찾기`}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button type="submit" className="diag-primary">
+            찾기
+          </button>
+          <button
+            type="button"
+            className="diag-secondary"
+            disabled={!draft && !text}
+            onClick={() => {
+              setDraft('');
+              setText('');
+            }}
+          >
+            지우기
+          </button>
+        </form>
         {items.length === 0 && <p className="diag-hint">{trash ? '휴지통이 비어 있습니다.' : '조건에 맞는 기록이 없습니다.'}</p>}
         {items.map((o) => (
           <article key={o.id} className="rec-entry">
@@ -368,6 +403,7 @@ function StudentPanel({
               ))}
             </div>
             {o.note && <p className="rec-note">{o.note}</p>}
+            <MatchList matches={o.matches} text={text} />
             <AttachmentView attachments={o.attachments} />
             <div className="rec-row rec-wrap">
               {trash ? (

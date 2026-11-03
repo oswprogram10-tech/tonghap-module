@@ -60,6 +60,7 @@ pub fn run() {
             db::observations::observation_restore,
             db::observations::observation_purge,
             db::observations::observation_list,
+            db::observations::observation_count,
             db::attachments::attachment_add_file,
             db::attachments::attachment_add_bytes,
             db::attachments::attachment_delete,

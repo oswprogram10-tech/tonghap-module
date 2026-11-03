@@ -59,6 +59,13 @@ export interface Observation extends ObservationInput {
   unitSessionTitle: string | null;
   students: { id: string; number: number; name: string }[];
   attachments: Attachment[];
+  /** 검색어가 있을 때만: 일치한 곳. */
+  matches?: SearchMatch[];
+}
+
+export interface SearchMatch {
+  field: 'note' | 'transcript' | 'tag' | 'session' | 'student';
+  snippet: string;
 }
 
 export interface ObservationQuery {
@@ -71,6 +78,13 @@ export interface ObservationQuery {
   deletedOnly?: boolean;
   limit?: number;
   before?: string;
+  /** 검색어. 공백으로 나눈 낱말이 모두 들어 있는 기록(메모·자막·태그·차시 제목·학생 이름). */
+  text?: string;
+  /** 'YYYY-MM-DD', 양 끝 포함. */
+  from?: string;
+  to?: string;
+  hasPhoto?: boolean;
+  hasAudio?: boolean;
 }
 
 export interface StudentPortfolio {
@@ -113,6 +127,7 @@ export const recordsApi = {
   observationRestore: (id: string) => invoke<void>('observation_restore', { id }),
   observationPurge: (id: string) => invoke<void>('observation_purge', { id }),
   observationList: (query: ObservationQuery) => invoke<Observation[]>('observation_list', { query }),
+  observationCount: (query: ObservationQuery) => invoke<number>('observation_count', { query }),
   attachmentAddFile: (observationId: string, path: string) => invoke<Attachment>('attachment_add_file', { observationId, path }),
   /** 녹음 같은 큰 바이트는 JSON이 아니라 원시 본문으로 보낸다. 헤더 값은 ASCII여야 한다. */
   attachmentAddBytes: (observationId: string, kind: 'audio', mime: string, bytes: Uint8Array) =>

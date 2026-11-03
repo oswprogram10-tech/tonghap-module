@@ -1466,3 +1466,75 @@ button {
   font-size: 13px;
   color: var(--muted);
 }
+
+/* 기록 찾기 */
+.rec-search {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.rec-search-box {
+  margin-bottom: 8px;
+}
+
+.rec-search-input {
+  min-width: 200px;
+  font-size: 18px;
+}
+
+.rec-search-filters {
+  align-items: flex-end;
+}
+
+.rec-toggle {
+  min-height: var(--touch);
+  padding: 0 18px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.rec-toggle.on {
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.rec-search-count {
+  margin: 0;
+  font-weight: 700;
+}
+
+.rec-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rec-match {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 15px;
+}
+
+.rec-match-kind {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.rec-mark {
+  background: #ffe58a;
+  color: #222;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
