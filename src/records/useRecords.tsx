@@ -20,11 +20,11 @@ const KEY_TOPIC = 'currentTopicBookId';
  * 관찰 기록·포트폴리오 공통 바깥틀: 브라우저 미리보기 안내, 학급 불러오기,
  * 학급이 없으면 학급 만들기부터 보여 준다. 현재 학급·주제책은 settings에 저장한다.
  */
-export function RecordsGate({ children }: { children: (ctx: RecordsCtx) => ReactNode }) {
+export function RecordsGate({ children, what = '관찰 기록' }: { children: (ctx: RecordsCtx) => ReactNode; what?: string }) {
   if (!isTauri()) {
     return (
       <main className="diag">
-        <p className="diag-note">관찰 기록은 설치된 앱에서만 동작합니다. 브라우저 미리보기에서는 사용할 수 없습니다.</p>
+        <p className="diag-note">{what}은(는) 설치된 앱에서만 동작합니다. 브라우저 미리보기에서는 사용할 수 없습니다.</p>
       </main>
     );
   }

@@ -6,6 +6,7 @@ import BackupView from './backup/BackupView';
 import DiagView from './diag/DiagView';
 import PortfolioView from './records/PortfolioView';
 import RecordView from './records/RecordView';
+import UnitsView from './units/UnitsView';
 
 interface AppInfo {
   version: string;
@@ -13,7 +14,7 @@ interface AppInfo {
   arch: string;
 }
 
-type View = 'record' | 'portfolio' | 'topics' | 'tools' | 'diag' | 'backup';
+type View = 'record' | 'portfolio' | 'units' | 'topics' | 'diag' | 'backup';
 
 const VERIFICATION_LABEL: Record<Verification, string> = {
   'unverified-spec': '원문 확인 필요',
@@ -49,11 +50,11 @@ export default function App() {
           <button className={view === 'portfolio' ? 'tab active' : 'tab'} onClick={() => setView('portfolio')}>
             포트폴리오
           </button>
+          <button className={view === 'units' ? 'tab active' : 'tab'} onClick={() => setView('units')}>
+            단원
+          </button>
           <button className={view === 'topics' ? 'tab active' : 'tab'} onClick={() => setView('topics')}>
             주제책
-          </button>
-          <button className={view === 'tools' ? 'tab active' : 'tab'} onClick={() => setView('tools')}>
-            단원 개발 도구
           </button>
           <button className={view === 'diag' ? 'tab active' : 'tab'} onClick={() => setView('diag')}>
             기기 점검
@@ -68,6 +69,8 @@ export default function App() {
         <RecordView key={dataKey} onGoBackup={() => setView('backup')} />
       ) : view === 'portfolio' ? (
         <PortfolioView key={dataKey} />
+      ) : view === 'units' ? (
+        <UnitsView key={dataKey} />
       ) : view === 'topics' ? (
         <main className="topics-layout">
           <aside className="semesters" aria-label="학기 선택">
@@ -96,8 +99,6 @@ export default function App() {
           </section>
           <TopicDetail topic={topic} />
         </main>
-      ) : view === 'tools' ? (
-        <ToolsView />
       ) : view === 'backup' ? (
         <BackupView onRestored={() => setDataKey((k) => k + 1)} />
       ) : (
@@ -169,45 +170,6 @@ function Notes({ label, items }: { label: string; items?: string[] }) {
         ))}
       </ul>
     </details>
-  );
-}
-
-function ToolsView() {
-  return (
-    <main className="tools-layout">
-      <section>
-        <h2>단원 개발 도구 8종</h2>
-        <div className="tool-grid">
-          {curriculum.unitDevelopmentTools.map((tool) => (
-            <article key={tool.id} className="tool-card">
-              <h3>{tool.name}</h3>
-              <ol>
-                {tool.steps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            </article>
-          ))}
-        </div>
-      </section>
-      <section>
-        <h2>교과별 교수학습 모형</h2>
-        <div className="tool-grid">
-          {curriculum.subjects.map((s) => (
-            <article key={s.id} className="tool-card">
-              <h3>
-                <span className={`subject-chip subject-${s.id}`}>{s.name}</span> {s.focus} 중심
-              </h3>
-              <ol>
-                {s.teachingModel.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            </article>
-          ))}
-        </div>
-      </section>
-    </main>
   );
 }
 

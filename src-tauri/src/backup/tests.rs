@@ -125,7 +125,7 @@ fn backup_then_restore_into_other_data_dir_keeps_counts_and_bytes() {
     assert_eq!(sum.counts, Counts { classes: 1, students: 3, observations: 1, attachments: 2 });
     assert_eq!(sum.file_count, 3);
     assert_eq!(sum.app_version, "0.3.0");
-    assert_eq!(sum.schema_version, 1);
+    assert_eq!(sum.schema_version, crate::db::migrations::latest_version());
 
     let dst = tmp("dst").join("data");
     let (conn, _) = open(&dst).unwrap();
@@ -404,4 +404,37 @@ fn failed_move_of_original_never_deletes_it() {
         assert_eq!(counts(&tdb), before, "fail_on={fail_on}");
         assert_eq!(attachment_files(&tdb, &target), files, "fail_on={fail_on}");
     }
+}
+
+#[test]
+fn restoring_a_version_1_backup_migrates_it_to_the_latest_schema() {
+    // 버전 1 스키마만 적용한 DB로 백업을 만든다.
+    let src = tmp("v1").join("data");
+    std::fs::create_dir_all(src.join("media")).unwrap();
+    let v1 = Connection::open(src.join("tonghap.db")).unwrap();
+    crate::db::migrations::apply_up_to(&v1, 1).unwrap();
+    v1.execute_batch(
+        "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c1', 2027, 1, '1반', 't');
+         INSERT INTO observations (id, class_id, observed_at, topic_book_id, note, created_at, updated_at)
+           VALUES ('o1', 'c1', '2027-03-05T10:00:00+09:00', 'g1s1-school', '옛 기록', 't', 't');",
+    )
+    .unwrap();
+    let src_db = Mutex::new(v1);
+    let file = make_backup(&src_db, &src);
+    assert_eq!(inspect(&file, PW).unwrap().schema_version, 1);
+
+    let (target, tdb) = seeded("v1-target");
+    let sum = run_restore(&tdb, &target, &file, PW).unwrap();
+    assert_eq!(sum.schema_version, 1);
+
+    let conn = tdb.lock().unwrap();
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+    assert_eq!(version, crate::db::migrations::latest_version());
+    let (note, link): (String, Option<String>) =
+        conn.query_row("SELECT note, unit_session_id FROM observations WHERE id = 'o1'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+    assert_eq!((note.as_str(), link), ("옛 기록", None));
+    let units: i64 = conn.query_row("SELECT count(*) FROM units", [], |r| r.get(0)).unwrap();
+    assert_eq!(units, 0);
+    let fk: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+    assert_eq!(fk, 1);
 }

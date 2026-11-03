@@ -9,6 +9,7 @@ pub mod observations;
 pub mod portfolio;
 pub mod settings;
 pub mod students;
+pub mod units;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};

@@ -25,6 +25,9 @@ pub struct ObservationInput {
     pub standard_codes: Vec<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// 연결할 단원 차시(선택). 같은 학급 단원의 차시여야 한다.
+    #[serde(default)]
+    pub unit_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -45,6 +48,8 @@ pub struct Observation {
     pub student_ids: Vec<String>,
     pub standard_codes: Vec<String>,
     pub tags: Vec<String>,
+    pub unit_session_id: Option<String>,
+    pub unit_session_title: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub deleted_at: Option<String>,
@@ -70,6 +75,30 @@ pub struct ObservationQuery {
     pub before: Option<String>,
 }
 
+/// 주제책 id 형식 검사. 빈 값은 `None`. 단원 빌더와 공유한다.
+pub fn check_topic_book_id(topic: Option<&str>) -> DbResult<Option<String>> {
+    match topic.map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(t) => {
+            let re = Regex::new(r"^g[1-6]s[12]-[a-z0-9-]+$").expect("정규식");
+            if !re.is_match(t) {
+                return Err(format!("주제책 id 형식이 올바르지 않습니다: {t}"));
+            }
+            Ok(Some(t.to_string()))
+        }
+    }
+}
+
+/// 성취기준 코드 형식 검사(앞뒤 공백 제거한 코드를 돌려준다). 단원 빌더와 공유한다.
+pub fn check_standard_code(code: &str) -> DbResult<String> {
+    let code = code.trim();
+    let re = Regex::new(r"^\[2.{1,2}\d{2}-\d{2}\]$").expect("정규식");
+    if !re.is_match(code) {
+        return Err(format!("성취기준 코드 형식이 올바르지 않습니다: {code}"));
+    }
+    Ok(code.to_string())
+}
+
 const MAX_TAG_CHARS: usize = 20;
 const MAX_NOTE_CHARS: usize = 10_000;
 
@@ -82,14 +111,21 @@ fn validate(conn: &Connection, input: &ObservationInput) -> DbResult<Observation
     if input.note.chars().count() > MAX_NOTE_CHARS {
         return Err("메모가 너무 깁니다".to_string());
     }
-    let topic = match input.topic_book_id.as_deref().map(str::trim) {
+    let topic = check_topic_book_id(input.topic_book_id.as_deref())?;
+    let unit_session_id = match input.unit_session_id.as_deref().map(str::trim) {
         None | Some("") => None,
-        Some(t) => {
-            let re = Regex::new(r"^g[1-6]s[12]-[a-z0-9-]+$").expect("정규식");
-            if !re.is_match(t) {
-                return Err(format!("주제책 id 형식이 올바르지 않습니다: {t}"));
+        Some(id) => {
+            let ok: i64 = conn
+                .query_row(
+                    "SELECT count(*) FROM unit_sessions s JOIN units u ON u.id = s.unit_id WHERE s.id = ?1 AND u.class_id = ?2",
+                    params![id, input.class_id],
+                    |r| r.get(0),
+                )
+                .db()?;
+            if ok == 0 {
+                return Err("선택한 차시가 이 학급의 단원에 없습니다".to_string());
             }
-            Some(t.to_string())
+            Some(id.to_string())
         }
     };
 
@@ -111,15 +147,11 @@ fn validate(conn: &Connection, input: &ObservationInput) -> DbResult<Observation
         }
     }
 
-    let re = Regex::new(r"^\[2.{1,2}\d{2}-\d{2}\]$").expect("정규식");
     let mut standard_codes: Vec<String> = Vec::new();
     for code in &input.standard_codes {
-        let code = code.trim();
-        if !re.is_match(code) {
-            return Err(format!("성취기준 코드 형식이 올바르지 않습니다: {code}"));
-        }
-        if !standard_codes.iter().any(|c| c == code) {
-            standard_codes.push(code.to_string());
+        let code = check_standard_code(code)?;
+        if !standard_codes.contains(&code) {
+            standard_codes.push(code);
         }
     }
 
@@ -145,6 +177,7 @@ fn validate(conn: &Connection, input: &ObservationInput) -> DbResult<Observation
         student_ids,
         standard_codes,
         tags,
+        unit_session_id,
     })
 }
 
@@ -167,8 +200,9 @@ fn replace_children(conn: &Connection, id: &str, input: &ObservationInput) -> Db
 pub fn get(conn: &Connection, media: &Path, id: &str) -> DbResult<Observation> {
     let mut o = conn
         .query_row(
-            "SELECT id, class_id, observed_at, topic_book_id, note, created_at, updated_at, deleted_at
-             FROM observations WHERE id = ?1",
+            "SELECT o.id, o.class_id, o.observed_at, o.topic_book_id, o.note, o.created_at, o.updated_at, o.deleted_at,
+                    o.unit_session_id, us.title
+             FROM observations o LEFT JOIN unit_sessions us ON us.id = o.unit_session_id WHERE o.id = ?1",
             [id],
             |r| {
                 Ok(Observation {
@@ -180,6 +214,8 @@ pub fn get(conn: &Connection, media: &Path, id: &str) -> DbResult<Observation> {
                     student_ids: vec![],
                     standard_codes: vec![],
                     tags: vec![],
+                    unit_session_id: r.get(8)?,
+                    unit_session_title: r.get(9)?,
                     created_at: r.get(5)?,
                     updated_at: r.get(6)?,
                     deleted_at: r.get(7)?,
@@ -221,9 +257,9 @@ pub fn create(conn: &mut Connection, media: &Path, input: &ObservationInput) -> 
     let now = now_iso();
     let tx = conn.transaction().db()?;
     tx.execute(
-        "INSERT INTO observations (id, class_id, observed_at, topic_book_id, note, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
-        params![id, input.class_id, input.observed_at, input.topic_book_id, input.note, now],
+        "INSERT INTO observations (id, class_id, observed_at, topic_book_id, note, created_at, updated_at, unit_session_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7)",
+        params![id, input.class_id, input.observed_at, input.topic_book_id, input.note, now, input.unit_session_id],
     )
     .db()?;
     replace_children(&tx, &id, &input)?;
@@ -242,8 +278,8 @@ pub fn update(conn: &mut Connection, media: &Path, id: &str, input: &Observation
     let input = validate(conn, input)?;
     let tx = conn.transaction().db()?;
     tx.execute(
-        "UPDATE observations SET observed_at = ?2, topic_book_id = ?3, note = ?4, updated_at = ?5 WHERE id = ?1",
-        params![id, input.observed_at, input.topic_book_id, input.note, now_iso()],
+        "UPDATE observations SET observed_at = ?2, topic_book_id = ?3, note = ?4, updated_at = ?5, unit_session_id = ?6 WHERE id = ?1",
+        params![id, input.observed_at, input.topic_book_id, input.note, now_iso(), input.unit_session_id],
     )
     .db()?;
     replace_children(&tx, id, &input)?;
@@ -360,6 +396,7 @@ pub mod tests {
             student_ids: students.iter().map(|s| s.to_string()).collect(),
             standard_codes: vec!["[2바01-01]".to_string()],
             tags: vec!["협력".to_string()],
+            unit_session_id: None,
         }
     }
 

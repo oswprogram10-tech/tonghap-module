@@ -346,6 +346,7 @@ function StudentPanel({
             <div className="rec-card-head">
               <strong>{formatDateTime(o.observedAt)}</strong>
               {o.topicBookId && <span className="rec-tag">{topicTitle(o.topicBookId)}</span>}
+              {o.unitSessionTitle && <span className="rec-tag rec-tag-session">차시: {o.unitSessionTitle}</span>}
               {o.students.length > 1 && <span className="rec-tag">함께: {o.students.filter((s) => s.id !== student.id).map((s) => s.name).join(', ')}</span>}
             </div>
             <div className="rec-card-meta">

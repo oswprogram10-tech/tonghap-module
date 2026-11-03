@@ -3,6 +3,8 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { ACTIVITY_TAGS, errorText, recordsApi, type Attachment, type ClassInfo, type Observation, type Student } from './api';
 import AttachmentView from './Attachments';
 import AudioRecorder, { type Recording } from './AudioRecorder';
+import { unitsApi, type SessionOption } from '../units/api';
+import { todayString } from '../units/util';
 import { fromInputValue, shorten, toInputValue, topicStandards, topicsOfGrade, standardByCode } from './util';
 
 interface Props {
@@ -34,10 +36,38 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(editing?.unitSessionId ?? null);
+  const [sessionOptions, setSessionOptions] = useState<SessionOption[]>([]);
 
   const topics = useMemo(() => topicsOfGrade(cls.grade), [cls.grade]);
   const topicStd = topicStandards(topicId);
   const chipCodes = [...topicStd.map((x) => x.standard.code), ...codes.filter((c) => !topicStd.some((x) => x.standard.code === c))];
+
+  // 오늘의 차시 선택지. 새 기록에서 오늘 날짜 차시가 하나뿐이면 자동으로 고른다.
+  const pickSession = (opt: SessionOption | null) => {
+    setSessionId(opt ? opt.sessionId : null);
+    if (!opt) return;
+    if (opt.topicBookId) onTopicChange(opt.topicBookId);
+    setCodes(opt.standardCodes);
+  };
+  const pickSessionRef = useRef(pickSession);
+  pickSessionRef.current = pickSession;
+  useEffect(() => {
+    let live = true;
+    const today = todayString();
+    unitsApi
+      .sessionsForRecord(cls.id, today)
+      .then((list) => {
+        if (!live) return;
+        setSessionOptions(list);
+        const todays = list.filter((o) => o.scheduledOn === today);
+        if (!editing && todays.length === 1) pickSessionRef.current(todays[0]);
+      })
+      .catch((e) => console.error('차시 목록 불러오기 실패', e));
+    return () => {
+      live = false;
+    };
+  }, [cls.id]);
 
   // 닫힐 때 남은 녹음 미리듣기 URL 정리
   const recordingsRef = useRef<Recording[]>([]);
@@ -77,6 +107,7 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
         studentIds: selected,
         standardCodes: codes,
         tags,
+        unitSessionId: sessionId,
       };
       const obs = editing ? await recordsApi.observationUpdate(editing.id, input) : await recordsApi.observationCreate(input);
 
@@ -148,6 +179,24 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
             {topics.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.semester}학기 {t.order}. {t.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="rec-field">
+          차시 (선택)
+          <select
+            value={sessionId ?? ''}
+            onChange={(e) => pickSession(sessionOptions.find((o) => o.sessionId === e.target.value) ?? null)}
+          >
+            <option value="">(차시 연결 안 함)</option>
+            {editing?.unitSessionId && !sessionOptions.some((o) => o.sessionId === editing.unitSessionId) && (
+              <option value={editing.unitSessionId}>{editing.unitSessionTitle ?? '연결된 차시'}</option>
+            )}
+            {sessionOptions.map((o) => (
+              <option key={o.sessionId} value={o.sessionId}>
+                {o.unitTitle} · {o.sessionTitle}
+                {o.scheduledOn ? ` (${o.scheduledOn})` : ''}
               </option>
             ))}
           </select>

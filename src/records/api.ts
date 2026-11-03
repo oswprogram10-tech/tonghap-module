@@ -43,6 +43,8 @@ export interface ObservationInput {
   studentIds: string[];
   standardCodes: string[];
   tags: string[];
+  /** 연결한 단원 차시(선택). */
+  unitSessionId?: string | null;
 }
 
 export interface Observation extends ObservationInput {
@@ -50,6 +52,7 @@ export interface Observation extends ObservationInput {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  unitSessionTitle: string | null;
   students: { id: string; number: number; name: string }[];
   attachments: Attachment[];
 }
