@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/oswprogram10-tech/tonghap-module/data/curriculum/schema/curriculum.schema.json",
+  "title": "통합교과 교육과정 데이터",
+  "description": "2022 개정 초등 통합교과 1~2학년군의 영역·성취기준·주제책·단원 개발 도구. CASE(CFDocument/CFItem/CFAssociation) 개념을 단순화한 구조.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["framework", "subjects", "areas", "topicBooks", "standards", "unitDevelopmentTools"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "framework": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "revision", "gradeBand", "dataVersion", "sources", "requiredModulesPerTopicBook"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "revision": { "type": "string" },
+        "gradeBand": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 6 }, "minItems": 1 },
+        "dataVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "note"],
+            "properties": {
+              "kind": { "enum": ["spec", "official", "official-todo", "teacher-guide"] },
+              "note": { "type": "string" },
+              "url": { "type": "string" }
+            }
+          }
+        },
+        "requiredModulesPerTopicBook": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["safetySessions", "playSessionsMin", "makingBookSessions"],
+          "properties": {
+            "safetySessions": { "type": "integer", "minimum": 0 },
+            "playSessionsMin": { "type": "integer", "minimum": 0 },
+            "makingBookSessions": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "subjects": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "id", "name", "focus", "teachingModel"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1, "maxLength": 2, "description": "성취기준 코드에 들어가는 교과 약자 (바/슬/즐, 2028년 이후 '건' 등 추가 가능)" },
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "name": { "type": "string" },
+          "focus": { "type": "string" },
+          "teachingModel": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+        }
+      }
+    },
+    "areas": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["number", "question", "coreIdea"],
+        "properties": {
+          "number": { "type": "integer", "minimum": 1, "maximum": 9 },
+          "question": { "type": "string" },
+          "coreIdea": { "type": "string" }
+        }
+      }
+    },
+    "topicBooks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "grade", "semester", "order", "title", "area", "standardIndex", "sessions", "subtopics", "verification"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^g[1-6]s[12]-[a-z0-9-]+$" },
+          "grade": { "type": "integer", "minimum": 1, "maximum": 6 },
+          "semester": { "enum": [1, 2] },
+          "order": { "type": "integer", "minimum": 1 },
+          "title": { "type": "string" },
+          "area": { "type": "integer", "minimum": 1, "maximum": 9, "description": "이 주제책이 다루는 영역 번호" },
+          "standardIndex": { "type": "integer", "minimum": 1, "maximum": 9, "description": "영역 안 성취기준 번호. 모든 교과에서 같은 번호의 성취기준이 이 주제책에 대응" },
+          "sessions": { "type": "integer", "minimum": 1 },
+          "subtopics": { "type": "array", "items": { "type": "string" } },
+          "verification": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mapping", "subtopics"],
+            "properties": {
+              "mapping": { "$ref": "#/$defs/verification" },
+              "subtopics": { "$ref": "#/$defs/verification" }
+            }
+          }
+        }
+      }
+    },
+    "standards": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "subject", "area", "index", "statement", "verification"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^\\[2.{1,2}\\d{2}-\\d{2}\\]$" },
+          "subject": { "type": "string" },
+          "area": { "type": "integer", "minimum": 1, "maximum": 9 },
+          "index": { "type": "integer", "minimum": 1, "maximum": 9 },
+          "statement": { "type": ["string", "null"], "description": "고시 원문. 확인 전에는 null" },
+          "verification": { "$ref": "#/$defs/verification" }
+        }
+      }
+    },
+    "unitDevelopmentTools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "steps"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "name": { "type": "string" },
+          "steps": { "type": "array", "items": { "type": "string" }, "minItems": 4, "maxItems": 4 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "verification": {
+      "enum": ["unverified-spec", "inferred", "verified"],
+      "description": "unverified-spec: 명세서에서 옮김(미확인) / inferred: 추정 / verified: 고시 원문·지도서로 확인"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+*.log
+.DS_Store
+# 로컬 AI 모델 파일은 저장소에 넣지 않음
+models/
+*.gguf
+*.bin

@@ -1,0 +1,275 @@
+/* 교사 PC·전자칠판 겸용. 터치 영역은 최소 64px (명세서 UI 원칙). */
+:root {
+  --bg: #f7f6f2;
+  --surface: #ffffff;
+  --text: #1f2328;
+  --muted: #5b6470;
+  --line: #dedbd2;
+  --accent: #2f6f4f;
+  --accent-soft: #e3efe8;
+  --bareun: #3c6db0;
+  --seulgi: #2f8a5b;
+  --jeulgeo: #c0612b;
+  --warn-bg: #fff3d6;
+  --warn-text: #7a5300;
+  --ok-bg: #dff3e6;
+  --ok-text: #1d6b3c;
+  --touch: 64px;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif;
+  font-size: 18px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  word-break: keep-all;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 24px;
+  color: var(--accent);
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab,
+.semester,
+.topic-card {
+  min-height: var(--touch);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.tab {
+  padding: 0 24px;
+}
+
+.tab.active,
+.semester.active,
+.topic-card.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 700;
+}
+
+.topics-layout {
+  display: grid;
+  grid-template-columns: 180px 240px 1fr;
+  gap: 20px;
+  padding: 20px 24px;
+  align-items: start;
+}
+
+.semesters,
+.topic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.semester {
+  padding: 0 16px;
+  text-align: left;
+}
+
+.topic-card {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  padding: 12px 16px;
+  min-height: 88px;
+  text-align: left;
+}
+
+.topic-order {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.topic-title {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.topic-meta {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.topic-detail {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 24px 28px;
+}
+
+.topic-detail h2 {
+  margin: 4px 0 8px;
+  font-size: 36px;
+}
+
+.topic-detail h3 {
+  margin: 24px 0 8px;
+  font-size: 19px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.area-question {
+  margin: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.core-idea {
+  margin: 0;
+  color: var(--muted);
+}
+
+.standards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.standards li {
+  display: grid;
+  grid-template-columns: 130px 120px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.statement {
+  color: var(--muted);
+}
+
+.subject-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.subject-bareun {
+  background: var(--bareun);
+}
+
+.subject-seulgi {
+  background: var(--seulgi);
+}
+
+.subject-jeulgeo {
+  background: var(--jeulgeo);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-unverified-spec,
+.badge-inferred {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.badge-verified {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.subtopics {
+  margin: 0;
+  padding-left: 24px;
+  line-height: 1.8;
+}
+
+.tools-layout {
+  padding: 20px 24px;
+}
+
+.tools-layout h2 {
+  margin: 8px 0 12px;
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.tool-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 20px;
+}
+
+.tool-card h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.tool-card ol {
+  margin: 0;
+  padding-left: 22px;
+  line-height: 1.7;
+}
+
+.app-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 24px;
+  font-size: 14px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
