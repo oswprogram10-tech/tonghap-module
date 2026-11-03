@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "메인 창 기본 권한",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open", "opener:allow-reveal-item-in-dir"]
 }

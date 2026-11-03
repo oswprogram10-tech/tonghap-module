@@ -38,6 +38,13 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      # 점검 도구가 쓰는 llama.cpp·whisper.cpp 윈도우 실행 파일 (버전은 src-tauri/engines.json)
+      - run: npm run fetch:engines
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Rust 단위 테스트는 프론트엔드 빌드 결과(dist)가 있어야 컴파일된다.
+      - run: npm run build
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
       # 코드 서명 전 단계: 서명되지 않은 설치 파일이 만들어짐 (SmartScreen 경고가 뜸)
       - run: npx tauri build --bundles nsis
       - uses: actions/upload-artifact@v4

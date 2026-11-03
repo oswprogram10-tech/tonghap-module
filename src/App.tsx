@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { SEMESTERS, areaOf, curriculum, standardsOf, topicsOf } from './curriculum';
 import type { TopicBook, Verification } from './curriculum/types';
+import DiagView from './diag/DiagView';
 
 interface AppInfo {
   version: string;
@@ -9,7 +10,7 @@ interface AppInfo {
   arch: string;
 }
 
-type View = 'topics' | 'tools';
+type View = 'topics' | 'tools' | 'diag';
 
 const VERIFICATION_LABEL: Record<Verification, string> = {
   'unverified-spec': '원문 확인 필요',
@@ -43,6 +44,9 @@ export default function App() {
           <button className={view === 'tools' ? 'tab active' : 'tab'} onClick={() => setView('tools')}>
             단원 개발 도구
           </button>
+          <button className={view === 'diag' ? 'tab active' : 'tab'} onClick={() => setView('diag')}>
+            기기 점검
+          </button>
         </nav>
       </header>
 
@@ -74,8 +78,10 @@ export default function App() {
           </section>
           <TopicDetail topic={topic} />
         </main>
-      ) : (
+      ) : view === 'tools' ? (
         <ToolsView />
+      ) : (
+        <DiagView />
       )}
 
       <footer className="app-footer">

@@ -8,3 +8,5 @@ src-tauri/gen/schemas/
 models/
 *.gguf
 *.bin
+# fetch-engines로 내려받는 실행 파일
+src-tauri/resources/engines/
