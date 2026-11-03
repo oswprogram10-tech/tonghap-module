@@ -65,11 +65,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["number", "question", "coreIdea"],
+        "required": ["number", "question", "coreIdeas"],
         "properties": {
           "number": { "type": "integer", "minimum": 1, "maximum": 9 },
           "question": { "type": "string" },
-          "coreIdea": { "type": "string" }
+          "coreIdeas": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "고시 핵심아이디어 원문(영역당 2문장)" }
         }
       }
     },
@@ -115,7 +115,9 @@
           "area": { "type": "integer", "minimum": 1, "maximum": 9 },
           "index": { "type": "integer", "minimum": 1, "maximum": 9 },
           "statement": { "type": ["string", "null"], "description": "고시 원문. 확인 전에는 null" },
-          "verification": { "$ref": "#/$defs/verification" }
+          "verification": { "$ref": "#/$defs/verification" },
+          "explanations": { "type": "array", "items": { "type": "string" }, "description": "성취기준 해설 중 이 성취기준 코드를 언급한 항목 원문" },
+          "considerations": { "type": "array", "items": { "type": "string" }, "description": "성취기준 적용 시 고려 사항 중 이 성취기준 코드를 언급한 항목 원문" }
         }
       }
     },

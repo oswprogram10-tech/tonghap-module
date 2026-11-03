@@ -13,7 +13,7 @@ export interface Subject {
 export interface Area {
   number: number;
   question: string;
-  coreIdea: string;
+  coreIdeas: string[];
 }
 
 export interface TopicBook {
@@ -36,6 +36,8 @@ export interface Standard {
   index: number;
   statement: string | null;
   verification: Verification;
+  explanations?: string[];
+  considerations?: string[];
 }
 
 export interface UnitDevelopmentTool {

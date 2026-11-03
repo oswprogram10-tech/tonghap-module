@@ -45,6 +45,13 @@ if (errors.length === 0) {
     const expected = `[2${s.subject}${pad(s.area)}-${pad(s.index)}]`;
     if (s.code !== expected) errors.push(`${s.code}: 코드가 교과·영역·번호와 불일치 (기대값 ${expected})`);
     if (s.verification === 'verified' && !s.statement) errors.push(`${s.code}: verified인데 원문(statement)이 없음`);
+    if (s.statement && (/[\r\n]/.test(s.statement) || /\s{2,}/.test(s.statement) || s.statement !== s.statement.trim()))
+      errors.push(`${s.code}: statement에 줄바꿈·연속 공백·앞뒤 공백이 있음`);
+    for (const k of ['explanations', 'considerations'])
+      for (const t of s[k] ?? []) {
+        if (/[\r\n]/.test(t) || /\s{2,}/.test(t)) errors.push(`${s.code}: ${k}에 줄바꿈·연속 공백이 있음`);
+        if (!t.trim()) errors.push(`${s.code}: ${k}에 빈 항목`);
+      }
   }
 
   // 모든 주제책은 교과마다 같은 (영역, 번호)의 성취기준을 하나씩 가져야 한다.

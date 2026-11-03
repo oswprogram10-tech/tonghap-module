@@ -98,7 +98,7 @@ function TopicDetail({ topic }: { topic: TopicBook }) {
         {area.number}영역 · {area.question}
       </p>
       <h2>{topic.title}</h2>
-      <p className="core-idea">{area.coreIdea}</p>
+      <p className="core-idea">{area.coreIdeas.join(' ')}</p>
 
       <h3>성취기준</h3>
       <ul className="standards">
@@ -108,6 +108,8 @@ function TopicDetail({ topic }: { topic: TopicBook }) {
             <code>{standard.code}</code>
             <span className="statement">{standard.statement ?? '—'}</span>
             <Badge v={standard.verification} />
+            <Notes label="해설" items={standard.explanations} />
+            <Notes label="적용 시 고려 사항" items={standard.considerations} />
           </li>
         ))}
       </ul>
@@ -127,6 +129,20 @@ function TopicDetail({ topic }: { topic: TopicBook }) {
         {required.makingBookSessions}차시
       </p>
     </article>
+  );
+}
+
+function Notes({ label, items }: { label: string; items?: string[] }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <details className="standard-notes">
+      <summary>{label}</summary>
+      <ul>
+        {items.map((t) => (
+          <li key={t}>{t}</li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

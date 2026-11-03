@@ -183,6 +183,49 @@ button {
   color: var(--muted);
 }
 
+.standard-notes {
+  grid-column: 1 / -1;
+  font-size: 16px;
+}
+
+.standard-notes summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch);
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--accent);
+  list-style: none;
+}
+
+.standard-notes summary::-webkit-details-marker {
+  display: none;
+}
+
+.standard-notes summary::before {
+  content: '▸';
+  margin-right: 8px;
+}
+
+.standard-notes[open] summary::before {
+  content: '▾';
+}
+
+.standard-notes ul {
+  margin: 0 0 8px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.standards .standard-notes li {
+  display: list-item;
+  padding: 0;
+  border: 0;
+}
+
 .subject-chip {
   display: inline-block;
   padding: 4px 10px;
