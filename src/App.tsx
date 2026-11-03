@@ -3,6 +3,8 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { SEMESTERS, areaOf, curriculum, standardsOf, topicsOf } from './curriculum';
 import type { TopicBook, Verification } from './curriculum/types';
 import DiagView from './diag/DiagView';
+import PortfolioView from './records/PortfolioView';
+import RecordView from './records/RecordView';
 
 interface AppInfo {
   version: string;
@@ -10,7 +12,7 @@ interface AppInfo {
   arch: string;
 }
 
-type View = 'topics' | 'tools' | 'diag';
+type View = 'record' | 'portfolio' | 'topics' | 'tools' | 'diag';
 
 const VERIFICATION_LABEL: Record<Verification, string> = {
   'unverified-spec': '원문 확인 필요',
@@ -19,7 +21,7 @@ const VERIFICATION_LABEL: Record<Verification, string> = {
 };
 
 export default function App() {
-  const [view, setView] = useState<View>('topics');
+  const [view, setView] = useState<View>('record');
   const [semesterIdx, setSemesterIdx] = useState(0);
   const { grade, semester } = SEMESTERS[semesterIdx];
   const topics = topicsOf(grade, semester);
@@ -38,6 +40,12 @@ export default function App() {
       <header className="app-header">
         <h1>바슬즐 탐험대</h1>
         <nav className="tabs" aria-label="화면 선택">
+          <button className={view === 'record' ? 'tab active' : 'tab'} onClick={() => setView('record')}>
+            관찰 기록
+          </button>
+          <button className={view === 'portfolio' ? 'tab active' : 'tab'} onClick={() => setView('portfolio')}>
+            포트폴리오
+          </button>
           <button className={view === 'topics' ? 'tab active' : 'tab'} onClick={() => setView('topics')}>
             주제책
           </button>
@@ -50,7 +58,11 @@ export default function App() {
         </nav>
       </header>
 
-      {view === 'topics' ? (
+      {view === 'record' ? (
+        <RecordView />
+      ) : view === 'portfolio' ? (
+        <PortfolioView />
+      ) : view === 'topics' ? (
         <main className="topics-layout">
           <aside className="semesters" aria-label="학기 선택">
             {SEMESTERS.map((s, idx) => (

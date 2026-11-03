@@ -9,6 +9,8 @@
 
 - 교육과정 데이터: 영역 4개, 주제책 16권, 성취기준 48개(교육부 고시 원문, 해설·적용 시 고려 사항 포함), 단원 개발 도구 8종, 교과별 교수학습 모형
 - 앱 화면: 학기별 주제책과 대응 성취기준 보기, 단원 개발 도구 보기
+- 관찰 기록: 학급·명단 관리(붙여넣기), 학생·주제책·성취기준·활동 태그·메모·사진·음성 메모로 기록, 수정·휴지통 (설계: [docs/design/01-observation-portfolio.md](docs/design/01-observation-portfolio.md))
+- 포트폴리오: 학급 현황(학생 × 주제책 기록 수), 학생별 성취기준 근거 격자와 타임라인
 - 기기 점검: 학교 PC의 사양·Vulkan GPU·인터넷 연결 확인, 측정용 모델 내려받기(이어받기, 파일 직접 선택 가능), llama.cpp·whisper.cpp 속도 측정, 평어 생성·음성 자막 소요 시간 추정, 결과를 문서 폴더에 저장
 - CI: 데이터 검증, 타입 검사, 프론트엔드 빌드, 윈도우 설치 파일(서명 전) 빌드
 
@@ -70,8 +72,9 @@ GitHub Actions에서도 `main`에 푸시할 때마다 빌드되며, 실행 결�
 ```
 data/curriculum/            교육과정 데이터(JSON)와 스키마
 scripts/                    데이터 검증 스크립트
-src/                        화면(React + TypeScript)
+src/                        화면(React + TypeScript). src/records/ 관찰 기록·포트폴리오
 src-tauri/                  데스크톱 앱(Rust, Tauri 2)과 설치 파일 설정
+src-tauri/src/db/           관찰 기록 저장소(SQLite, 첨부 파일)
 src-tauri/src/diag/         기기 점검 기능(사양 조회, 모델 내려받기, 속도 측정)
 src-tauri/resources/        설치 파일에 들어가는 파일(측정용 음성 샘플, 제3자 고지, 내려받은 엔진)
 docs/                       개발 계획 문서

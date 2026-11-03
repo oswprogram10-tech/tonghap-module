@@ -1,3 +1,4 @@
+mod db;
 mod diag;
 
 use serde::Serialize;
@@ -22,6 +23,14 @@ fn app_info(app: tauri::AppHandle) -> AppInfo {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            use tauri::Manager;
+            let data_dir = app.path().app_local_data_dir()?.join("data");
+            let (conn, media) = db::open(&data_dir)?;
+            app.manage(std::sync::Mutex::new(conn));
+            app.manage(media);
+            Ok(())
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -34,6 +43,26 @@ pub fn run() {
             diag::bench::diag_bench_llm,
             diag::bench::diag_bench_whisper,
             diag::diag_save_report,
+            db::classes::class_list,
+            db::classes::class_create,
+            db::classes::class_update,
+            db::classes::class_archive,
+            db::students::student_list,
+            db::students::student_import,
+            db::students::student_update,
+            db::observations::observation_create,
+            db::observations::observation_update,
+            db::observations::observation_delete,
+            db::observations::observation_restore,
+            db::observations::observation_purge,
+            db::observations::observation_list,
+            db::attachments::attachment_add_file,
+            db::attachments::attachment_add_bytes,
+            db::attachments::attachment_delete,
+            db::portfolio::portfolio_student,
+            db::portfolio::portfolio_class,
+            db::settings::settings_get,
+            db::settings::settings_set,
         ])
         .run(tauri::generate_context!())
         .expect("앱 실행 중 오류");
