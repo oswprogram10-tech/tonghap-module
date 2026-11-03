@@ -1,0 +1,30 @@
+{
+  "$schema": "./schema/plays.schema.json",
+  "dataVersion": "0.1.0",
+  "plays": [
+    {
+      "id": "red-light-green-light",
+      "name": "무궁화 꽃이 피었습니다",
+      "place": "both",
+      "group": "whole",
+      "minutes": 10,
+      "rules": ["술래는 벽을 보고 '무궁화 꽃이 피었습니다'를 외친다", "말이 끝나면 술래가 뒤돌아본다", "움직이다 들킨 사람은 술래 옆에 손잡고 선다", "술래를 치고 도망가면 친구들이 풀려난다"],
+      "safety": ["뛸 때 앞사람을 밀지 않는다", "정해진 선 밖으로 나가지 않는다"],
+      "materials": [],
+      "tags": ["전래", "신체", "규칙"],
+      "topicBookIds": ["g1s1-korea"]
+    },
+    {
+      "id": "mirror-play",
+      "name": "거울 놀이",
+      "place": "indoor",
+      "group": "pairs",
+      "minutes": 5,
+      "rules": ["짝과 마주 본다", "한 명이 천천히 움직인다", "다른 한 명은 거울처럼 똑같이 따라 한다", "신호가 울리면 역할을 바꾼다"],
+      "safety": ["팔을 크게 휘두르지 않는다"],
+      "materials": [],
+      "tags": ["표현", "조용한"],
+      "topicBookIds": ["g2s1-me"]
+    }
+  ]
+}

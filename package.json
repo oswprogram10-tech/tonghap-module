@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "validate:data": "node scripts/validate-curriculum.mjs",
+    "validate:data": "node scripts/validate-curriculum.mjs && node scripts/validate-plays.mjs",
     "tauri": "tauri",
     "fetch:engines": "node scripts/fetch-engines.mjs"
   },
