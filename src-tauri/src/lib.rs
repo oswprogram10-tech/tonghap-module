@@ -6,6 +6,7 @@ mod engine;
 mod llm_server;
 mod paths;
 mod stt;
+mod webdriver;
 #[doc(hidden)]
 pub mod testing;
 
@@ -44,12 +45,16 @@ pub fn run() {
             app.manage(media);
             stt::start(app.handle())?;
             llm_server::start(app.handle());
+            // 메인 창은 상태를 모두 등록한 뒤 만든다(tauri.conf.json의 create:false).
+            webdriver::create_main_window(app.handle())?;
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             app_info,
+            webdriver::webdriver_overrides_active,
+            webdriver::board_open_with_overrides,
             about::about_storage,
             diag::system::diag_system,
             diag::bench::diag_engines,

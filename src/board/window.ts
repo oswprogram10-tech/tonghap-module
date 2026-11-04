@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { availableMonitors, primaryMonitor } from '@tauri-apps/api/window';
 
@@ -13,6 +14,11 @@ export async function openBoardWindow(): Promise<void> {
     await existing.unminimize();
     await existing.show();
     await existing.setFocus();
+    return;
+  }
+  // 화면 E2E(디버그 빌드 + WebDriver)에서는 메인 창과 같은 WebView2 설정으로 Rust가 연다.
+  if (await invoke<boolean>('webdriver_overrides_active')) {
+    await invoke('board_open_with_overrides');
     return;
   }
   const [monitors, primary] = await Promise.all([availableMonitors(), primaryMonitor()]);
