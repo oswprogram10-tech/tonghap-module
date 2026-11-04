@@ -52,14 +52,21 @@ pub fn run() {
                 let _ = app.asset_protocol_scope().allow_directory(local.join("data").join("media"), true);
             }
             let data_dir = local.join("data");
-            let (conn, media) = logging::log_err("db", "데이터베이스 열기", db::open(&data_dir))?;
+            backup::cleanup_leftovers(&data_dir);
+            let opened = logging::log_err("db", "데이터베이스 열기", db::open_full(&data_dir))?;
+            let (conn, media, db_state) = (opened.conn, opened.media, opened.state);
+            logging::info("db", &format!("기록 보호 상태: {}", db_state.kind()));
             logging::info(
                 "db",
                 &format!("DB 스키마 v{} (최신 v{})", support::read_schema_version(&conn).unwrap_or(-1), db::migrations::latest_version()),
             );
-            logging::refresh_names(&conn);
+            // 열 수 없는 상태(잠김)에서는 학생 이름을 읽지 않는다. 화면은 안내와 복원만 보여 준다.
+            if !matches!(db_state, db::DbState::Locked(_)) {
+                logging::refresh_names(&conn);
+            }
             app.manage(std::sync::Mutex::new(conn));
             app.manage(media);
+            app.manage(db::DbStatus(std::sync::Mutex::new(db_state)));
             stt::start(app.handle())?;
             llm_server::start(app.handle());
             // 메인 창은 상태를 모두 등록한 뒤 만든다(tauri.conf.json의 create:false).
@@ -75,6 +82,7 @@ pub fn run() {
             webdriver::e2e_dialog_next,
             webdriver::e2e_debug_hooks,
             about::about_storage,
+            db::db_state,
             logging::log_frontend_error,
             support::support_preview,
             support::support_create,

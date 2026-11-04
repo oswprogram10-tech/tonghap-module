@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use tauri::{AppHandle, Manager};
 
-use crate::db::{lock, DbResult};
+use crate::db::{lock, DbResult, DbState, DbStatus};
 use crate::diag::{download::is_ready, vulkan, MODELS};
 use crate::logging;
 
@@ -76,6 +76,9 @@ pub struct Facts {
     pub webview_version: Option<String>,
     pub vulkan: VulkanSummary,
     pub engines: EnginesInfo,
+    /// 기록 DB 보호 상태: `ok` | `plain` | `locked`
+    pub db_state: &'static str,
+    pub db_encrypted: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -95,6 +98,8 @@ pub struct AboutJson {
     pub vulkan: VulkanSummary,
     pub engines: EnginesInfo,
     pub models: Vec<ModelInfo>,
+    pub db_encrypted: bool,
+    pub db_state: &'static str,
     pub db_schema_version: i64,
     pub latest_schema_version: i64,
     pub counts: Counts,
@@ -151,6 +156,8 @@ pub fn build_about(facts: Facts, conn: &Connection, models_dir: &Path, now: Date
         vulkan: facts.vulkan,
         engines: facts.engines,
         models: model_infos(models_dir),
+        db_encrypted: facts.db_encrypted,
+        db_state: facts.db_state,
         db_schema_version: read_schema_version(conn)?,
         latest_schema_version: crate::db::migrations::latest_version(),
         counts: read_counts(conn)?,
@@ -333,6 +340,7 @@ pub fn write_zip(path: &Path, entries: &[Entry], now: &DateTime<Local>) -> DbRes
 // ---------- 명령 ----------
 
 fn gather_facts(app: &AppHandle, curriculum_data_version: String) -> Facts {
+    let db_state = app.try_state::<DbStatus>().map(|s| crate::db::status_of(&s.0)).unwrap_or(DbState::Ok);
     let sys = System::new().ok().map(|mut sys| {
         sys.refresh_cpu_all();
         sys.refresh_memory();
@@ -357,6 +365,8 @@ fn gather_facts(app: &AppHandle, curriculum_data_version: String) -> Facts {
             llama_bench: has("llama", "llama-bench"),
             whisper_cli: has("whisper", "whisper-cli"),
         },
+        db_state: db_state.kind(),
+        db_encrypted: db_state.encrypted(),
     }
 }
 
@@ -436,6 +446,8 @@ mod tests {
             webview_version: Some("1.0".to_string()),
             vulkan: VulkanSummary { available: true, devices: vec!["GPU".to_string()] },
             engines: EnginesInfo { llama_server: true, llama_bench: false, whisper_cli: true },
+            db_state: "ok",
+            db_encrypted: true,
         }
     }
 
@@ -578,6 +590,8 @@ mod tests {
             "vulkan",
             "engines",
             "models",
+            "dbEncrypted",
+            "dbState",
             "dbSchemaVersion",
             "latestSchemaVersion",
             "counts",
@@ -588,6 +602,8 @@ mod tests {
         assert_eq!(v["curriculumDataVersion"], "9.9.9");
         assert_eq!(v["vulkan"]["available"], true);
         assert_eq!(v["engines"]["llamaBench"], false);
+        assert_eq!(v["dbEncrypted"], true);
+        assert_eq!(v["dbState"], "ok");
         assert_eq!(v["dbSchemaVersion"], v["latestSchemaVersion"]);
         assert_eq!(v["counts"], serde_json::json!({"classes":1,"students":2,"observations":0,"attachments":0,"units":0,"habits":0}));
         let models = v["models"].as_array().unwrap();

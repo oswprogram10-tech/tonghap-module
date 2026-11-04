@@ -10,11 +10,14 @@ use rusqlite::Connection;
 
 use super::format::{open_stream, read_manifest, sha256_file};
 use super::*;
-use crate::db::{self, lock, migrations, DbExt, DbResult};
+use crate::db::key::{self, DbKey, KeyFile};
+use crate::db::{self, crypt, lock, migrations, DbExt, DbResult};
 
 pub const STAGING: &str = ".restore-staging";
 pub const KEEP_BEFORE_RESTORE: usize = 3;
 const BEFORE_PREFIX: &str = "before-restore-";
+/// 현재 기록을 열 수 없을 때(잠김) 그 파일을 옮겨 두는 폴더 이름의 머리. 자동으로 지우지 않는다.
+const UNREADABLE_PREFIX: &str = "unreadable-";
 
 fn bad_content(why: &str) -> String {
     format!("백업 파일의 내용이 올바르지 않습니다({why}). 손상되었거나 변조된 파일일 수 있습니다")
@@ -133,8 +136,8 @@ fn mv(from: &Path, to: &Path) -> DbResult<()> {
     std::fs::rename(from, to).map_err(|e| format!("파일을 옮기지 못했습니다({}): {e}", from.display()))
 }
 
-fn unique_dir(data_dir: &Path, stamp: &str) -> PathBuf {
-    let base = data_dir.join(format!("{BEFORE_PREFIX}{stamp}"));
+fn unique_dir(data_dir: &Path, prefix: &str, stamp: &str) -> PathBuf {
+    let base = data_dir.join(format!("{prefix}{stamp}"));
     let mut dir = base.clone();
     let mut n = 2;
     while dir.exists() {
@@ -144,7 +147,33 @@ fn unique_dir(data_dir: &Path, stamp: &str) -> PathBuf {
     dir
 }
 
+/// 지금 `data/tonghap.db`를 이 앱이 열 수 있는지(없거나 평문이거나, 키로 풀림).
+fn current_db_readable(data_dir: &Path) -> bool {
+    match crypt::file_kind(&data_dir.join(DB_FILE)) {
+        Ok(crypt::FileKind::Missing | crypt::FileKind::Plain) => true,
+        Ok(crypt::FileKind::Encrypted) => match key::read_key_file(data_dir) {
+            KeyFile::Key(k) => crypt::open_keyed(&data_dir.join(DB_FILE), &k).is_ok(),
+            _ => false,
+        },
+        Err(_) => false,
+    }
+}
+
+/// 복원할 DB를 암호화할 키. 지금 키 파일이 풀리면 그것을 쓰고, 아니면(잠김) 새 키를 만들어
+/// `staging/db.key`에 둔다. 교체할 때 옛 키 파일은 보관 폴더로 옮겨지고 새 키가 자리에 놓인다.
+fn restore_key(data_dir: &Path, staging: &Path) -> DbResult<DbKey> {
+    match key::read_key_file(data_dir) {
+        KeyFile::Key(k) => Ok(k),
+        _ => {
+            let k = DbKey::generate()?;
+            key::write_key_file_at(&staging.join(key::KEY_FILE), &k)?;
+            Ok(k)
+        }
+    }
+}
+
 /// 현재 DB·첨부를 `before-restore-<stamp>`로 옮기고 staging의 것으로 바꾼다. 실패하면 원래대로 되돌린다.
+/// 지금 기록을 열 수 없던 경우(잠김)에는 `unreadable-<stamp>`로 옮기고, staging에 새 키(`db.key`)가 있으면 옛 키 파일도 함께 옮긴다.
 pub fn swap_data(db: &Mutex<Connection>, data_dir: &Path, staging: &Path, stamp: &str) -> DbResult<PathBuf> {
     swap_data_with(db, data_dir, staging, stamp, &mv)
 }
@@ -163,12 +192,19 @@ pub fn swap_data_with(
     let old = std::mem::replace(&mut *guard, Connection::open_in_memory().db()?);
     let _ = old.close();
 
-    let before = unique_dir(data_dir, stamp);
+    let new_key = staging.join(key::KEY_FILE);
+    let swap_key = new_key.exists();
+    let prefix = if current_db_readable(data_dir) { BEFORE_PREFIX } else { UNREADABLE_PREFIX };
+    let before = unique_dir(data_dir, prefix, stamp);
     let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new(); // (원래 위치, 보관 위치)
     let mut placed: Vec<PathBuf> = Vec::new(); // staging에서 data로 옮겨 놓은 것
     let attempt = (|| -> DbResult<Connection> {
         std::fs::create_dir_all(&before).map_err(|e| format!("보관 폴더를 만들 수 없습니다: {e}"))?;
-        for name in ["tonghap.db", "tonghap.db-wal", "tonghap.db-shm", "media"] {
+        let mut names = vec!["tonghap.db", "tonghap.db-wal", "tonghap.db-shm", "media"];
+        if swap_key {
+            names.push(key::KEY_FILE);
+        }
+        for name in names {
             let from = data_dir.join(name);
             if from.exists() {
                 let to = before.join(name);
@@ -178,6 +214,10 @@ pub fn swap_data_with(
         }
         mv(&staging.join(DB_FILE), &data_dir.join("tonghap.db"))?;
         placed.push(data_dir.join("tonghap.db"));
+        if swap_key {
+            mv(&new_key, &data_dir.join(key::KEY_FILE))?;
+            placed.push(data_dir.join(key::KEY_FILE));
+        }
         let new_media = staging.join("media");
         if new_media.exists() {
             mv(&new_media, &data_dir.join("media"))?;
@@ -238,6 +278,9 @@ pub fn restore(db: &Mutex<Connection>, data_dir: &Path, path: &Path, password: &
     let staging = data_dir.join(STAGING);
     let result = (|| {
         let manifest = extract_and_verify(path, password, &staging, cb)?;
+        // 백업 속 DB는 평문이다. 지금 키로 암호화한 파일로 바꾼 뒤 교체한다.
+        let key = restore_key(data_dir, &staging)?;
+        crypt::encrypt_file_in_place(&staging.join(DB_FILE), &key)?;
         cb(progress("swapping", 0, 1));
         let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
         swap_data(db, data_dir, &staging, &stamp)?;

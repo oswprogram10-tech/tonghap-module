@@ -4,7 +4,7 @@
 
 소스 코드 안내: 아래 Rust 크레이트는 수정하지 않고 사용했으며, 각 크레이트의 소스 코드는 아래에 적힌 이름과 버전으로 https://crates.io 에서 받을 수 있습니다. Mozilla Public License 2.0(MPL-2.0) 구성 요소도 같은 곳에서 원본 소스를 받을 수 있습니다.
 
-- Cargo.lock SHA-256: `087f4505377d897fc3e9f2b4c4f58f46fb157578ca8aff9d24ed6b11377a5d73`
+- Cargo.lock SHA-256: `95431628ab268d89dd567d27e2d2021f1c08f5a7144550c4cc869bc502cc027e`
 - package-lock.json SHA-256: `6115deed1052b08decce4137e0ab3a26b5c8b2838d169240ff33426fb00ae829`
 
 ---
@@ -464,7 +464,7 @@ SOFTWARE.
 
 | 라이선스 | 크레이트 수 |
 |---|---|
-| MIT License | 329 |
+| MIT License | 330 |
 | Unicode License v3 | 19 |
 | BSD 3-Clause "New" or "Revised" License | 9 |
 | Apache License 2.0 | 6 |
@@ -1604,7 +1604,7 @@ DEALINGS IN THE SOFTWARE.
 
 ##### MIT License
 
-사용하는 크레이트: cfg-if 1.0.5, filetime 0.2.29, socket2 0.6.5, toml 0.5.11
+사용하는 크레이트: cfg-if 1.0.5, filetime 0.2.29, openssl-sys 0.9.118, socket2 0.6.5, toml 0.5.11
 
 ~~~~text
 Copyright (c) 2014 Alex Crichton

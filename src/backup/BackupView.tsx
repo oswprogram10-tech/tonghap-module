@@ -35,7 +35,10 @@ function when(iso: string) {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' });
 }
 
-export default function BackupView({ onRestored }: { onRestored: () => void }) {
+/**
+ * `restoreOnly`: 기록을 열 수 없을 때의 안내 화면에서 쓴다. 백업 만들기는 숨기고 복원만 보여 준다.
+ */
+export default function BackupView({ onRestored, restoreOnly = false }: { onRestored: () => void; restoreOnly?: boolean }) {
   if (!isTauri()) {
     return (
       <main className="diag">
@@ -43,10 +46,10 @@ export default function BackupView({ onRestored }: { onRestored: () => void }) {
       </main>
     );
   }
-  return <Backup onRestored={onRestored} />;
+  return <Backup onRestored={onRestored} restoreOnly={restoreOnly} />;
 }
 
-function Backup({ onRestored }: { onRestored: () => void }) {
+function Backup({ onRestored, restoreOnly }: { onRestored: () => void; restoreOnly: boolean }) {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -66,7 +69,9 @@ function Backup({ onRestored }: { onRestored: () => void }) {
   const loadStatus = useCallback(() => {
     backupApi.status().then(setStatus).catch((e) => setCreateError(errorText(e)));
   }, []);
-  useEffect(loadStatus, [loadStatus]);
+  useEffect(() => {
+    if (!restoreOnly) loadStatus();
+  }, [loadStatus, restoreOnly]);
 
   const pwError = pw.length > 0 && (pw.trim().length === 0 || [...pw].length < 8) ? '암호는 8자 이상이어야 합니다.' : pw2.length > 0 && pw !== pw2 ? '암호 확인이 일치하지 않습니다.' : null;
   const canCreate = !busy && [...pw].length >= 8 && pw.trim().length > 0 && pw === pw2;
@@ -116,7 +121,10 @@ function Backup({ onRestored }: { onRestored: () => void }) {
 
   const restore = async () => {
     if (!file || !summary) return;
-    if (!window.confirm('현재 데이터는 보관 폴더로 옮겨 두고 백업 내용으로 바꿉니다.\n계속할까요?')) return;
+    const message = restoreOnly
+      ? '열 수 없는 기록 파일은 지우지 않고 보관 폴더(unreadable-날짜)에 그대로 둡니다. 백업 내용으로 새로 시작합니다.\n계속할까요?'
+      : '현재 데이터는 보관 폴더로 옮겨 두고 백업 내용으로 바꿉니다.\n계속할까요?';
+    if (!window.confirm(message)) return;
     setBusy(true);
     setRestoreError(null);
     setRProgress({ stage: 'reading', done: 0, total: 0 });
@@ -125,7 +133,7 @@ function Backup({ onRestored }: { onRestored: () => void }) {
       setRestored(true);
       setSummary(null);
       setRpw('');
-      loadStatus();
+      if (!restoreOnly) loadStatus();
       onRestored();
     } catch (e) {
       setRestoreError(errorText(e));
@@ -137,6 +145,7 @@ function Backup({ onRestored }: { onRestored: () => void }) {
 
   return (
     <main className="diag backup">
+      {!restoreOnly && (
       <section className="diag-section">
         <h2>백업 만들기</h2>
         <p className="diag-hint">
@@ -175,10 +184,15 @@ function Backup({ onRestored }: { onRestored: () => void }) {
           </div>
         )}
       </section>
+      )}
 
       <section className="diag-section">
         <h2>복원하기</h2>
-        <p className="diag-hint">백업 파일의 내용으로 현재 데이터를 바꿉니다. 현재 데이터는 보관 폴더(최근 3개)에 남습니다.</p>
+        <p className="diag-hint">
+          {restoreOnly
+            ? '백업 파일의 내용으로 기록을 새로 시작합니다. 열 수 없는 기록 파일은 보관 폴더에 그대로 남습니다.'
+            : '백업 파일의 내용으로 현재 데이터를 바꿉니다. 현재 데이터는 보관 폴더(최근 3개)에 남습니다.'}
+        </p>
         <button className="diag-secondary" onClick={pick} disabled={busy}>
           백업 파일 선택
         </button>

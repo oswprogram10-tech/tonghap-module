@@ -53,9 +53,19 @@ fn ms(d: Duration) -> f64 {
 fn year_scale_timings_stay_under_limits() {
     let dir = work_dir();
     let media = dir.join("media");
-    let mut conn = Connection::open(dir.join("tonghap.db")).unwrap();
-    conn.pragma_update(None, "journal_mode", "WAL").unwrap();
-    prepare(&conn).unwrap();
+    // 앱과 같은 방식(SQLCipher 암호화 DB)으로 연다. `TONGHAP_PERF_PLAIN=1`이면 키 없는 평문 DB로 재서 암호화의 비용을 비교한다.
+    let plain = std::env::var_os("TONGHAP_PERF_PLAIN").is_some();
+    let mut conn = if plain {
+        let c = Connection::open(dir.join("tonghap.db")).unwrap();
+        c.pragma_update(None, "journal_mode", "WAL").unwrap();
+        prepare(&c).unwrap();
+        c
+    } else {
+        let o = open_full(&dir).unwrap();
+        assert!(o.state.encrypted() && o.state.reason().is_none());
+        o.conn
+    };
+    println!("DB: {}", if plain { "평문(비교용)" } else { "SQLCipher 암호화" });
     let t = Instant::now();
     let s = seed_year(&mut conn, &media, &SeedOpts::default()).unwrap();
     println!("seed_year: {:.0}ms", ms(t.elapsed()));
@@ -142,4 +152,27 @@ fn year_scale_timings_stay_under_limits() {
     assert!(over.is_empty(), "상한을 넘은 곳: {over:?}");
     // 단계가 바뀌거나 끝나는 이벤트는 간격과 상관없이 나가므로, 그 외에는 100ms 이상이어야 한다.
     assert!(sent * 20 < events.len().max(20), "진행률 이벤트가 충분히 솎이지 않았습니다: {sent}/{}", events.len());
+}
+
+/// 업데이트 후 처음 열 때 한 번 걸리는 시간: 1년치 평문 DB를 암호화 DB로 바꾼다(설계 20). 상한은 없고 시간만 기록한다.
+#[test]
+#[ignore = "1년치 평문 DB를 만들어 전환 시간을 잰다. --ignored로 실행"]
+fn year_scale_encryption_conversion_time() {
+    let dir = std::env::temp_dir().join(format!("tonghap-perf-conv-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("media")).unwrap();
+    {
+        let mut conn = Connection::open(dir.join("tonghap.db")).unwrap();
+        conn.pragma_update(None, "journal_mode", "WAL").unwrap();
+        prepare(&conn).unwrap();
+        seed_year(&mut conn, &dir.join("media"), &SeedOpts::default()).unwrap();
+    }
+    let bytes = std::fs::metadata(dir.join("tonghap.db")).unwrap().len();
+    let t = Instant::now();
+    let o = open_full(&dir).unwrap();
+    let took = t.elapsed();
+    assert!(o.state.encrypted() && o.state.reason().is_none());
+    println!("\n평문 → 암호화 전환(DB {:.1}MB): {:.0}ms", bytes as f64 / 1e6, ms(took));
+    drop(o);
+    let _ = std::fs::remove_dir_all(&dir);
 }

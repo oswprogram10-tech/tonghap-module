@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { errorText } from './records/api';
 import { openBoardWindow } from './board/window';
@@ -6,6 +6,8 @@ import { SEMESTERS, areaOf, curriculum, standardsOf, topicsOf } from './curricul
 import type { TopicBook, Verification } from './curriculum/types';
 import AboutView from './about/AboutView';
 import BackupView from './backup/BackupView';
+import LockedView from './backup/LockedView';
+import { dbStateApi, type DbStateInfo } from './backup/api';
 import DiagView from './diag/DiagView';
 import ErrorBoundary from './support/ErrorBoundary';
 import EvalView from './evaluation/EvalView';
@@ -35,6 +37,12 @@ export default function App() {
   const [topicId, setTopicId] = useState(topics[0].id);
   const topic = topics.find((t) => t.id === topicId) ?? topics[0];
   const appInfo = useAppInfo();
+  const [dbState, setDbState] = useState<DbStateInfo | null>(null);
+  const reloadDbState = useCallback(() => {
+    if (!isTauri()) return;
+    dbStateApi.get().then(setDbState, (e) => console.error('db_state 호출 실패', e));
+  }, []);
+  useEffect(reloadDbState, [reloadDbState]);
   const [boardError, setBoardError] = useState<string | null>(null);
   // 복원 후 학급·기록을 다시 불러오도록 화면을 새로 만든다.
   const [dataKey, setDataKey] = useState(0);
@@ -44,6 +52,37 @@ export default function App() {
     const { grade: g, semester: s } = SEMESTERS[idx];
     setTopicId(topicsOf(g, s)[0].id);
   };
+
+  const footer = (
+    <footer className="app-footer">
+      <span>
+        교육과정 데이터 v{curriculum.framework.dataVersion} · 성취기준 {curriculum.standards.length}개 중 원문 확인{' '}
+        {curriculum.standards.filter((s) => s.verification === 'verified').length}개
+      </span>
+      <span>{appInfo ? `앱 v${appInfo.version} · ${appInfo.os}/${appInfo.arch}` : '브라우저 미리보기'}</span>
+    </footer>
+  );
+
+  // 암호화된 기록을 이 계정에서 열 수 없으면 다른 탭은 막고 안내와 복원만 보여 준다.
+  if (dbState?.state === 'locked') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>바슬즐 탐험대</h1>
+        </header>
+        <ErrorBoundary name="locked">
+          <LockedView
+            reason={dbState.reason}
+            onRestored={() => {
+              setDataKey((k) => k + 1);
+              reloadDbState();
+            }}
+          />
+        </ErrorBoundary>
+        {footer}
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -133,13 +172,7 @@ export default function App() {
         )}
       </ErrorBoundary>
 
-      <footer className="app-footer">
-        <span>
-          교육과정 데이터 v{curriculum.framework.dataVersion} · 성취기준 {curriculum.standards.length}개 중 원문 확인{' '}
-          {curriculum.standards.filter((s) => s.verification === 'verified').length}개
-        </span>
-        <span>{appInfo ? `앱 v${appInfo.version} · ${appInfo.os}/${appInfo.arch}` : '브라우저 미리보기'}</span>
-      </footer>
+      {footer}
     </div>
   );
 }

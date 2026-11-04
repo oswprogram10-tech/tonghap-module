@@ -318,7 +318,8 @@ fn restore_keeps_previous_data_and_only_three_before_restore_folders() {
     for (rel, bytes) in &old_files {
         assert_eq!(&std::fs::read(attachments::abs_path(&old.join("media"), rel)).unwrap(), bytes);
     }
-    let kept = Connection::open(old.join("tonghap.db")).unwrap();
+    // 보관된 이전 DB는 암호화된 채로 옮겨지며 같은 키로 열린다.
+    let kept = crypt::open_keyed(&old.join("tonghap.db"), &key_of(&target)).unwrap();
     let n: i64 = kept.query_row("SELECT count(*) FROM students", [], |r| r.get(0)).unwrap();
     assert_eq!(n, old_counts.students);
     // 윈도우는 열린 파일이 든 폴더를 지울 수 없으므로 정리 전에 닫는다.
@@ -643,4 +644,275 @@ fn throttle_thins_progress_but_keeps_stage_changes_and_ends() {
         }
     }
     assert!(passed <= 3, "통과 {passed}개");
+}
+
+// ---------- DB 암호화(설계 20) ----------
+
+use crate::db::crypt::{self, FileKind};
+use crate::db::key::{self, DbKey, KeyFile};
+use crate::db::DbState;
+
+const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
+
+fn key_of(data: &Path) -> DbKey {
+    match key::read_key_file(data) {
+        KeyFile::Key(k) => k,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// `data/tonghap.db`가 암호화되어 있고 현재 키로 열리며, 평문 DB가 어디에도 없다.
+fn assert_encrypted(data: &Path) {
+    assert_eq!(crypt::file_kind(&data.join("tonghap.db")).unwrap(), FileKind::Encrypted);
+    assert!(crypt::open_keyed(&data.join("tonghap.db"), &key_of(data)).is_ok());
+    assert!(!data.join(restore::STAGING).exists());
+    assert!(!data.join(".backup-tmp").exists());
+    assert!(!data.join("tonghap.db.enc-tmp").exists() && !data.join("tonghap.db.plain-old").exists());
+}
+
+#[test]
+fn backup_vault_keeps_a_plain_sqlite_db_and_leaves_no_temp_files() {
+    let (src, src_db) = seeded("enc-vault");
+    assert_encrypted(&src);
+    let file = make_backup(&src_db, &src);
+    assert!(!src.join(".backup-tmp").exists(), "평문 임시 복사본이 남았음");
+    let (m, files) = unpack(&file);
+    let db = &files.iter().find(|(n, _)| n == "tonghap.db").unwrap().1;
+    assert_eq!(&db[..16], SQLITE_MAGIC, "보관함 안 DB는 평문 SQLite(백업 형식 유지)");
+    assert_eq!(m.counts, Counts { classes: 1, students: 3, observations: 1, attachments: 2 });
+    // 예전 앱(키 없이 SQLite로 여는 쪽)이 그대로 열 수 있다.
+    let probe = tmp("enc-vault-probe").join("x.db");
+    std::fs::write(&probe, db).unwrap();
+    let c = Connection::open(&probe).unwrap();
+    let n: i64 = c.query_row("SELECT count(*) FROM students", [], |r| r.get(0)).unwrap();
+    assert_eq!(n, 3);
+    // 백업 파일 어디에도 평문 SQLite 머리가 겉으로 보이지 않는다(보관함 전체가 암호화).
+    assert!(!std::fs::read(&file).unwrap().windows(16).any(|w| w == SQLITE_MAGIC));
+}
+
+#[test]
+fn backup_failure_leaves_no_plain_copy() {
+    let (src, src_db) = seeded("enc-fail");
+    let out = src.parent().unwrap().join("nope").join("x.tonghap"); // 폴더가 없어 쓰기 단계에서 실패
+    let err = create(&src_db, &src, &out, PW, WF, &mut |_| {}).unwrap_err();
+    assert!(!err.is_empty());
+    assert!(!src.join(".backup-tmp").exists());
+    // 앱 연결은 그대로 쓸 수 있다.
+    src_db.lock().unwrap().execute("INSERT INTO settings (key, value) VALUES ('k', '1')", []).unwrap();
+}
+
+#[test]
+fn restore_into_encrypted_database_round_trips_and_is_encrypted() {
+    let (src, src_db) = seeded("enc-src");
+    let file = make_backup(&src_db, &src);
+    let (dst, dst_db) = seeded("enc-dst");
+    let key_before = std::fs::read(dst.join("db.key")).unwrap();
+    run_restore(&dst_db, &dst, &file, PW).unwrap();
+    assert_eq!(counts(&dst_db), counts(&src_db));
+    assert_encrypted(&dst);
+    assert_eq!(std::fs::read(dst.join("db.key")).unwrap(), key_before, "키는 바뀌지 않는다");
+    // 보관 폴더로 옮겨진 이전 DB도 암호화되어 있다.
+    let kept: Vec<_> = std::fs::read_dir(&dst).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with("before-restore-")).collect();
+    assert_eq!(kept.len(), 1);
+    assert_eq!(crypt::file_kind(&kept[0].path().join("tonghap.db")).unwrap(), FileKind::Encrypted);
+    // 다시 열어도 같다.
+    drop(dst_db);
+    let (conn, _) = open(&dst).unwrap();
+    let n: i64 = conn.query_row("SELECT count(*) FROM students", [], |r| r.get(0)).unwrap();
+    assert_eq!(n, 3);
+}
+
+/// 예전 앱이 만든 평문 DB(스키마 `version`)로 백업을 만들어 새 data에 복원한다.
+fn restore_old_plain_backup(version: i64) -> (PathBuf, Mutex<Connection>) {
+    let src = tmp(&format!("old-v{version}")).join("data");
+    std::fs::create_dir_all(src.join("media")).unwrap();
+    let old = Connection::open(src.join("tonghap.db")).unwrap();
+    crate::db::migrations::apply_up_to(&old, version).unwrap();
+    old.execute_batch(
+        "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c1', 2027, 1, '1반', 't');
+         INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s1', 'c1', 1, '김하늘', 't');",
+    )
+    .unwrap();
+    let src_db = Mutex::new(old);
+    let file = make_backup(&src_db, &src);
+    assert_eq!(inspect(&file, PW).unwrap().schema_version, version);
+    let (target, tdb) = seeded(&format!("old-v{version}-target"));
+    run_restore(&tdb, &target, &file, PW).unwrap();
+    (target, tdb)
+}
+
+#[test]
+fn restoring_old_plain_v8_and_v9_backups_results_in_an_encrypted_database() {
+    for v in [8, 9] {
+        let (target, tdb) = restore_old_plain_backup(v);
+        assert_encrypted(&target);
+        let c = tdb.lock().unwrap();
+        let name: String = c.query_row("SELECT name FROM students WHERE id = 's1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(name, "김하늘", "v{v}");
+        let uv: i64 = c.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(uv, crate::db::migrations::latest_version());
+        drop(c);
+        // 파일 어디에도 이름이 평문으로 없다.
+        for e in std::fs::read_dir(&target).unwrap().flatten() {
+            if e.path().is_file() && e.file_name() != "db.key" {
+                assert!(!std::fs::read(e.path()).unwrap().windows("김하늘".len()).any(|w| w == "김하늘".as_bytes()), "{:?}", e.path());
+            }
+        }
+    }
+}
+
+/// 잠긴 상태의 data(암호화 DB는 있으나 키를 쓸 수 없음)를 만든다. `break_key`가 키 파일을 망가뜨린다.
+fn locked_dir(name: &str, break_key: impl FnOnce(&Path)) -> (PathBuf, Mutex<Connection>) {
+    let (dir, db) = seeded(name);
+    drop(db);
+    break_key(&dir);
+    let o = crate::db::open_full(&dir).unwrap();
+    assert!(matches!(o.state, DbState::Locked(_)), "{:?}", o.state);
+    (dir, Mutex::new(o.conn))
+}
+
+fn dir_names(dir: &Path, prefix: &str) -> Vec<PathBuf> {
+    let mut v: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with(prefix)).map(|e| e.path()).collect();
+    v.sort();
+    v
+}
+
+#[test]
+fn restoring_from_a_locked_state_keeps_the_unreadable_files_and_creates_a_new_key() {
+    let (src, src_db) = seeded("lk-src");
+    let file = make_backup(&src_db, &src);
+    for how in ["missing", "junk", "wrong"] {
+        let (dir, db) = locked_dir(&format!("lk-{how}"), |d| match how {
+            "missing" => std::fs::remove_file(d.join("db.key")).unwrap(),
+            "junk" => std::fs::write(d.join("db.key"), b"junk").unwrap(),
+            _ => key::write_key_file(d, &DbKey::generate().unwrap()).unwrap(),
+        });
+        let old_db = std::fs::read(dir.join("tonghap.db")).unwrap();
+        let old_key = std::fs::read(dir.join("db.key")).ok();
+
+        run_restore(&db, &dir, &file, PW).unwrap();
+
+        assert_eq!(counts(&db), counts(&src_db), "{how}");
+        assert_encrypted(&dir);
+        let unreadable = dir_names(&dir, "unreadable-");
+        assert_eq!(unreadable.len(), 1, "{how}");
+        assert!(dir_names(&dir, "before-restore-").is_empty(), "{how}: 열 수 없던 파일은 before-restore가 아니라 unreadable 폴더로");
+        assert_eq!(std::fs::read(unreadable[0].join("tonghap.db")).unwrap(), old_db, "{how}: 열 수 없던 DB가 그대로 보관되어야 함");
+        if how == "junk" {
+            assert_eq!(std::fs::read(unreadable[0].join("db.key")).unwrap(), old_key.unwrap(), "풀 수 없던 키 파일도 함께 보관");
+        }
+        if how == "missing" {
+            assert!(!unreadable[0].join("db.key").exists());
+        }
+        // 다시 열면 열린다.
+        drop(db);
+        let o = crate::db::open_full(&dir).unwrap();
+        assert_eq!(o.state, DbState::Ok, "{how}");
+        // unreadable 폴더는 3개 제한(prune) 대상이 아니다.
+        let (_dir2, db2) = (dir.clone(), Mutex::new(o.conn));
+        for _ in 0..4 {
+            run_restore(&db2, &dir, &file, PW).unwrap();
+        }
+        assert_eq!(dir_names(&dir, "unreadable-").len(), 1);
+        assert_eq!(dir_names(&dir, "before-restore-").len(), 3);
+    }
+}
+
+#[test]
+fn failed_swap_in_a_locked_state_restores_the_old_files_and_key() {
+    let (dir, db) = locked_dir("lk-swap", |d| std::fs::write(d.join("db.key"), b"junk").unwrap());
+    let before = snapshot_dir(&dir);
+    let (src, src_db) = seeded("lk-swap-src");
+    let file = make_backup(&src_db, &src);
+    let staging = dir.join(restore::STAGING);
+    restore::extract_and_verify(&file, PW, &staging, &mut |_| {}).unwrap();
+    let k = DbKey::generate().unwrap();
+    crypt::encrypt_file_in_place(&staging.join("tonghap.db"), &k).unwrap();
+    key::write_key_file_at(&staging.join("db.key"), &k).unwrap();
+    // 새 db가 자리에 놓인 뒤 매체 폴더 이동에서 실패한다.
+    let fail = |from: &Path, to: &Path| -> DbResult<()> {
+        if from.ends_with("media") && from.starts_with(&staging) {
+            return Err("주입".to_string());
+        }
+        std::fs::rename(from, to).map_err(|e| e.to_string())
+    };
+    std::fs::create_dir_all(staging.join("media")).unwrap();
+    let err = swap_data_with(&db, &dir, &staging, "20270101-000000", &fail).unwrap_err();
+    assert!(err.contains("되돌렸습니다"), "{err}");
+    let _ = std::fs::remove_dir_all(&staging);
+    assert_eq!(snapshot_dir(&dir), before, "열 수 없던 파일과 키 파일이 그대로 돌아와야 함");
+    assert!(dir_names(&dir, "unreadable-").is_empty());
+}
+
+fn snapshot_dir(dir: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+    fn walk(base: &Path, dir: &Path, out: &mut std::collections::BTreeMap<String, Vec<u8>>) {
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk(base, &p, out);
+            } else {
+                out.insert(p.strip_prefix(base).unwrap().to_string_lossy().into_owned(), std::fs::read(&p).unwrap());
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    walk(dir, dir, &mut out);
+    out
+}
+
+#[test]
+fn locked_backup_attempt_is_not_possible_without_a_real_database_but_restore_with_wrong_password_changes_nothing() {
+    let (src, src_db) = seeded("lk-pw-src");
+    let file = make_backup(&src_db, &src);
+    let (dir, db) = locked_dir("lk-pw", |d| std::fs::write(d.join("db.key"), b"junk").unwrap());
+    let before = snapshot_dir(&dir);
+    assert!(run_restore(&db, &dir, &file, "wrong password").is_err());
+    assert_eq!(snapshot_dir(&dir), before);
+}
+
+#[test]
+fn restore_while_conversion_was_postponed_encrypts_the_new_db_and_the_kept_old_one() {
+    // 전환을 미룬(평문) 상태에서 복원한다: 새 DB는 암호화, 보관된 이전 평문 DB도 곧바로 암호화된다.
+    let (src, src_db) = seeded("pp-src");
+    let file = make_backup(&src_db, &src);
+    let dir = tmp("pp-dst").join("data");
+    {
+        std::fs::create_dir_all(dir.join("media")).unwrap();
+        let mut c = Connection::open(dir.join("tonghap.db")).unwrap();
+        crate::db::prepare(&c).unwrap();
+        crate::db::testing::seed_year(&mut c, &dir.join("media"), &crate::db::testing::SeedOpts { seed: 3, students: 4, observations: 10, attachments: 0, units: 2, sessions: 6, habits: 1, habit_days: 5, parent_reports: 1, big_unit_sessions: 3 }).unwrap();
+    }
+    struct NoExport;
+    impl crypt::ConvertOps for NoExport {
+        fn export(&self, _: &Path, _: &Path, _: &DbKey) -> DbResult<()> {
+            Err("주입".to_string())
+        }
+    }
+    let o = crate::db::open_full_with(&dir, &NoExport).unwrap();
+    assert!(matches!(o.state, DbState::Plain(_)));
+    let db = Mutex::new(o.conn);
+
+    run_restore(&db, &dir, &file, PW).unwrap();
+    assert_eq!(counts(&db), counts(&src_db));
+    assert_encrypted(&dir);
+    let kept = dir_names(&dir, "before-restore-");
+    assert_eq!(kept.len(), 1);
+    assert_eq!(crypt::file_kind(&kept[0].join("tonghap.db")).unwrap(), FileKind::Encrypted, "보관된 이전 DB도 암호화");
+    drop(db);
+    let o = crate::db::open_full(&dir).unwrap();
+    assert_eq!(o.state, DbState::Ok);
+}
+
+#[test]
+fn cleanup_removes_temp_folders_left_by_a_crash() {
+    let dir = tmp("cleanup");
+    for n in [".backup-tmp", restore::STAGING] {
+        std::fs::create_dir_all(dir.join(n)).unwrap();
+        std::fs::write(dir.join(n).join("tonghap.db"), b"SQLite format 3\0 plain").unwrap();
+    }
+    std::fs::create_dir_all(dir.join("media")).unwrap();
+    cleanup_leftovers(&dir);
+    assert!(!dir.join(".backup-tmp").exists() && !dir.join(restore::STAGING).exists());
+    assert!(dir.join("media").exists());
+    cleanup_leftovers(&dir); // 없어도 오류 없이 지나간다
 }

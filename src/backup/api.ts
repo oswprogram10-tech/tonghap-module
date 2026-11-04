@@ -53,6 +53,16 @@ export const backupApi = {
   status: () => invoke<BackupStatus>('backup_status'),
 };
 
+/** 기록 DB의 보호 상태. ok: 암호화됨 / plain: 암호화를 못 해 평문으로 쓰는 중 / locked: 이 계정에서 열 수 없음. */
+export interface DbStateInfo {
+  state: 'ok' | 'plain' | 'locked';
+  reason: string | null;
+}
+
+export const dbStateApi = {
+  get: () => invoke<DbStateInfo>('db_state'),
+};
+
 export const BACKUP_REMINDER_KEY = 'backupReminderDismissedOn';
 export const REMINDER_DAYS = 7;
 

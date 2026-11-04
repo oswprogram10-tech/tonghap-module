@@ -53,6 +53,11 @@
       "license": "MIT OR Apache-2.0"
     },
     {
+      "name": "getrandom",
+      "version": "0.3.4",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
       "name": "hex",
       "version": "0.4.3",
       "license": "MIT OR Apache-2.0"

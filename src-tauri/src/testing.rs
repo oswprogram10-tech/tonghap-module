@@ -14,6 +14,7 @@ pub use crate::llm_server::{http, LlmError};
 pub use crate::backup::format as backup_format;
 pub use crate::backup::{BackupProgress, Throttle, PROGRESS_MIN_INTERVAL};
 pub use crate::db::testing::{seed_year, SeedOpts, SeedSummary};
+pub use crate::db::open_full;
 pub use crate::db::{activities, habits, migrations, observations, portfolio, prepare, reports, units};
 pub use crate::db::evaluation::bundle::build as evidence_bundle;
 pub use crate::stt::reset_pending;

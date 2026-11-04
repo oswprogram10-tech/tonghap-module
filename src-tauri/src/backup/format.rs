@@ -104,8 +104,8 @@ fn create_inner(
     let snap = tmp.join(DB_FILE);
     let (counts, schema_version, rels) = {
         let conn = lock(db)?;
-        let literal = snap.to_string_lossy().replace('\'', "''");
-        conn.execute_batch(&format!("VACUUM INTO '{literal}'")).db()?;
+        // 보관함 안의 DB는 평문 SQLite로 둔다(백업 형식 유지). 암호화 DB에서 평문 복사본을 만든다.
+        crate::db::crypt::export_to_plain(&conn, &snap)?;
         let count = |sql: &str| -> DbResult<i64> { conn.query_row(sql, [], |r| r.get(0)).db() };
         let counts = Counts {
             classes: count("SELECT count(*) FROM classes")?,

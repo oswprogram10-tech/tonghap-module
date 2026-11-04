@@ -3,7 +3,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import notices from '../../src-tauri/resources/THIRD_PARTY_NOTICES.md?raw';
 import { BUILTIN_PLAYS } from '../board/api';
-import { backupApi, type BackupCounts, type BackupStatus } from '../backup/api';
+import { backupApi, dbStateApi, type BackupCounts, type BackupStatus, type DbStateInfo } from '../backup/api';
 import { curriculum } from '../curriculum';
 import { formatBytes } from '../diag/estimate';
 import { errorText } from '../records/api';
@@ -40,6 +40,7 @@ export default function AboutView({ onGoBackup }: { onGoBackup: () => void }) {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
   const [status, setStatus] = useState<BackupStatus | null>(null);
+  const [dbState, setDbState] = useState<DbStateInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   const [showFull, setShowFull] = useState(false);
@@ -61,6 +62,7 @@ export default function AboutView({ onGoBackup }: { onGoBackup: () => void }) {
     invoke<AppInfo>('app_info').then(setInfo, (e) => setError(errorText(e)));
     invoke<StorageUsage>('about_storage').then(setStorage, (e) => setError(errorText(e)));
     backupApi.status().then(setStatus, (e) => setError(errorText(e)));
+    dbStateApi.get().then(setDbState, (e) => setError(errorText(e)));
   }, [tauri]);
 
   const standards = curriculum.standards;
@@ -153,6 +155,27 @@ export default function AboutView({ onGoBackup }: { onGoBackup: () => void }) {
               백업 탭으로
             </button>
           </>
+        )}
+      </section>
+
+      <section className="diag-section" aria-label="기록 보호">
+        <h2>기록 보호</h2>
+        {!tauri ? (
+          <p className="diag-note">기록 보호 상태는 설치된 앱에서만 보입니다.</p>
+        ) : dbState === null ? (
+          <p className="diag-note">불러오는 중…</p>
+        ) : dbState.state === 'plain' ? (
+          <>
+            <p className="diag-error" role="alert">
+              기록 데이터베이스를 아직 암호화하지 못했습니다. 지금은 예전처럼 평문으로 저장되어 있습니다. 앱을 다시 시작하면 다시 시도합니다.
+            </p>
+            {dbState.reason && <p className="diag-hint">이유: {dbState.reason}</p>}
+            <p className="diag-note">사진·음성 파일은 아직 암호화되지 않습니다.</p>
+          </>
+        ) : (
+          <p className="diag-note">
+            기록 데이터베이스가 이 PC의 윈도우 계정에 묶인 키로 암호화되어 있습니다. 사진·음성 파일은 아직 암호화되지 않습니다.
+          </p>
         )}
       </section>
 

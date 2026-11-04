@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
 
-use crate::db::{lock, settings, DbExt, DbResult, MediaDir};
+use crate::db::{lock, settings, DbExt, DbResult, DbState, DbStatus, MediaDir};
 
 pub const FORMAT_NAME: &str = "tonghap-backup";
 pub const FORMAT_VERSION: i64 = 1;
@@ -205,6 +205,28 @@ impl Drop for BusyGuard {
     }
 }
 
+/// 앱을 시작할 때 이전 실행이 도중에 꺼져 남은 임시 폴더(평문 DB 복사본이 들어 있을 수 있다)를 지운다.
+/// 복원·백업 중에 부르면 안 된다(시작할 때 한 번만).
+pub fn cleanup_leftovers(data_dir: &Path) {
+    for name in [".backup-tmp", restore::STAGING] {
+        let p = data_dir.join(name);
+        if p.exists() {
+            let _ = std::fs::remove_dir_all(&p);
+            crate::logging::info("backup", "이전 실행에서 남은 임시 폴더를 지웠습니다");
+        }
+    }
+}
+
+/// 기록을 열 수 없는 상태(잠김)에서는 백업을 만들지 않는다(빈 DB를 백업하게 되므로).
+fn ensure_not_locked(app: &AppHandle) -> DbResult<()> {
+    if let Some(s) = app.try_state::<DbStatus>() {
+        if matches!(crate::db::status_of(&s.0), DbState::Locked(_)) {
+            return Err("기록을 열 수 없는 상태에서는 백업을 만들 수 없습니다".to_string());
+        }
+    }
+    Ok(())
+}
+
 fn data_dir(app: &AppHandle) -> DbResult<PathBuf> {
     app.state::<MediaDir>()
         .0
@@ -230,6 +252,7 @@ fn log_backup_result<T>(what: &str, result: &DbResult<T>) {
 #[tauri::command]
 pub async fn backup_create(app: AppHandle, path: String, password: String, on_progress: Channel<BackupProgress>) -> DbResult<BackupResult> {
     let _busy = BusyGuard::acquire()?;
+    ensure_not_locked(&app)?;
     let dir = data_dir(&app)?;
     let mut out = PathBuf::from(path);
     if out.extension().is_none() {
@@ -260,6 +283,7 @@ pub async fn backup_restore(app: AppHandle, path: String, password: String, on_p
     let _busy = BusyGuard::acquire()?;
     let dir = data_dir(&app)?;
     crate::logging::info("backup", "백업 복원 시작");
+    let handle = app.clone();
     let result = blocking(move || {
         let db = app.state::<Mutex<Connection>>();
         let mut throttle = Throttle::new(PROGRESS_MIN_INTERVAL);
@@ -270,6 +294,12 @@ pub async fn backup_restore(app: AppHandle, path: String, password: String, on_p
         })
     })
     .await;
+    if result.is_ok() {
+        // 복원된 DB는 항상 암호화되어 열린다(잠김·평문 경고 상태가 풀린다).
+        if let Some(s) = handle.try_state::<DbStatus>() {
+            *s.0.lock().unwrap_or_else(|e| e.into_inner()) = DbState::Ok;
+        }
+    }
     log_backup_result("백업 복원", &result);
     result
 }
