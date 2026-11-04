@@ -119,6 +119,8 @@ unsafe impl Sync for JobHandle {}
 #[cfg(windows)]
 impl JobHandle {
     /// 핸들을 닫는다(KILL_ON_JOB_CLOSE이므로 속한 프로세스가 종료된다).
+    /// 앱 전체 작업 개체는 앱이 끝날 때 OS가 닫으므로, 이 함수는 테스트에서만 쓴다.
+    #[cfg(test)]
     pub fn close(self) {
         unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0) };
     }
