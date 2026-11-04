@@ -1,0 +1,18 @@
+### 요약
+
+| 라이선스 | 크레이트 수 |
+|---|---|
+{{#each overview}}
+| {{{name}}} | {{count}} |
+{{/each}}
+
+{{#each licenses}}
+#### {{{name}}}
+
+사용하는 크레이트: {{#each used_by}}{{{crate.name}}} {{{crate.version}}}{{#unless @last}}, {{/unless}}{{/each}}
+
+~~~~text
+{{{text}}}
+~~~~
+
+{{/each}}

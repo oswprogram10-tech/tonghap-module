@@ -41,7 +41,19 @@ export default function AboutView({ onGoBackup }: { onGoBackup: () => void }) {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [showFull, setShowFull] = useState(false);
+  const [fullText, setFullText] = useState<string | null>(null);
+  const [fullError, setFullError] = useState<string | null>(null);
   const tauri = isTauri();
+
+  // 전문은 크기가 커서 처음 열 때만 불러온다(주 번들에 넣지 않음).
+  useEffect(() => {
+    if (!showFull || fullText !== null) return;
+    import('../../src-tauri/resources/THIRD_PARTY_LICENSES.md?raw').then(
+      (m) => setFullText(m.default),
+      (e) => setFullError(errorText(e)),
+    );
+  }, [showFull, fullText]);
 
   useEffect(() => {
     if (!tauri) return;
@@ -168,6 +180,9 @@ export default function AboutView({ onGoBackup }: { onGoBackup: () => void }) {
         <LicenseTable rows={licenses.npm} />
         <h3>프로그램(Rust) 구성 요소</h3>
         <LicenseTable rows={licenses.rust} />
+        <button className="diag-secondary" onClick={() => setShowFull(true)}>
+          전체 라이선스 보기
+        </button>
       </section>
 
       <section className="diag-section" aria-label="교육과정 출처">
@@ -178,6 +193,26 @@ export default function AboutView({ onGoBackup }: { onGoBackup: () => void }) {
           {count('inferred')}개. 「원문 확인 필요」「추정」으로 표시된 내용은 공식 문서와 대조해 쓰세요.
         </p>
       </section>
+
+      {showFull && (
+        <div className="license-panel" role="dialog" aria-modal="true" aria-label="전체 라이선스">
+          <div className="license-panel-bar">
+            <h2>전체 라이선스</h2>
+            <button className="diag-primary" onClick={() => setShowFull(false)}>
+              닫기
+            </button>
+          </div>
+          {fullError ? (
+            <p className="diag-error">라이선스 전문을 불러오지 못했습니다: {fullError}</p>
+          ) : fullText === null ? (
+            <p className="diag-note">불러오는 중…</p>
+          ) : (
+            <pre className="license-panel-text" tabIndex={0}>
+              {fullText}
+            </pre>
+          )}
+        </div>
+      )}
     </main>
   );
 }

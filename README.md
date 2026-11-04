@@ -5,7 +5,7 @@
 
 개발 계획은 [docs/PLAN.md](docs/PLAN.md)에 있습니다.
 
-## 현재 상태 (v0.11.0)
+## 현재 상태 (v0.11.1)
 
 - 교육과정 데이터: 영역 4개, 주제책 16권, 성취기준 48개(교육부 고시 원문, 해설·적용 시 고려 사항 포함), 단원 개발 도구 8종, 교과별 교수학습 모형
 - 앱 화면: 학기별 주제책과 대응 성취기준 보기
@@ -41,6 +41,12 @@ npm run fetch:engines
 
 ```bash
 npm run dev
+```
+
+제3자 라이선스 전문 다시 만들기(의존성을 바꾼 뒤, cargo-about 0.9.2 필요: `cargo install cargo-about --locked --version 0.9.2 --features cli`):
+
+```bash
+npm run licenses:full
 ```
 
 교육과정 데이터 검증:

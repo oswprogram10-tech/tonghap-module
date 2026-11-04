@@ -1,0 +1,20 @@
+# cargo-about 설정: 윈도우용 앱에 들어가는 Rust 의존성(빌드/개발 전용 제외)의 라이선스 전문을 모은다.
+# 새 라이선스가 나오면 자동으로 받아들이지 말고 내용을 검토한 뒤 여기에 추가한다.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "0BSD",
+]
+targets = ["x86_64-pc-windows-msvc"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+[private]
+ignore = true

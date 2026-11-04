@@ -2217,3 +2217,36 @@ button {
   top: 0;
   background: var(--accent-soft);
 }
+
+/* 전체 라이선스 보기 */
+.license-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg, #fff);
+  padding: 16px;
+  gap: 12px;
+}
+.license-panel-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.license-panel-bar button {
+  min-height: 64px;
+  min-width: 96px;
+}
+.license-panel-text {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid #ccc;
+  padding: 12px;
+}
