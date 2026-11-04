@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "합성 근거 묶음용 문장 은행",
+  "description": "평어 모델 미세조정용 가짜 학생 기록을 만드는 재료. 실제 학생 기록이 아니다. 묶음 키는 data/evaluation/templates.json의 tagGroups 값(practice, care, safety, inquiry, question, play, express, cooperate)과 같다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dataVersion", "note", "observations", "quotes", "sessionTitles", "habits"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "dataVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "note": { "type": "string" },
+    "observations": {
+      "description": "교사 관찰 메모. 묶음별 15개 이상. 교사가 수업 중 짧게 적는 말투(예: '돋보기로 개미집을 오래 들여다봄.'), 이름 없이.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["practice", "care", "safety", "inquiry", "question", "play", "express", "cooperate"],
+      "patternProperties": {
+        "^[a-z]+$": {
+          "type": "array",
+          "minItems": 15,
+          "items": { "type": "string", "minLength": 6, "maxLength": 60 }
+        }
+      }
+    },
+    "quotes": {
+      "description": "아이가 한 말(음성 자막처럼 짧은 구어). 묶음별 8개 이상. 따옴표 없이.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["practice", "care", "safety", "inquiry", "question", "play", "express", "cooperate"],
+      "patternProperties": {
+        "^[a-z]+$": {
+          "type": "array",
+          "minItems": 8,
+          "items": { "type": "string", "minLength": 2, "maxLength": 40 }
+        }
+      }
+    },
+    "sessionTitles": {
+      "description": "주제책 id별 차시 제목. 주제책마다 6개 이상.",
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^g[12]s[12]-[a-z0-9-]+$": {
+          "type": "array",
+          "minItems": 6,
+          "items": { "type": "string", "minLength": 3, "maxLength": 30 }
+        }
+      }
+    },
+    "habits": {
+      "description": "습관 신호등 습관 이름 예시. 10개 이상.",
+      "type": "array",
+      "minItems": 10,
+      "items": { "type": "string", "minLength": 3, "maxLength": 20 }
+    }
+  }
+}
