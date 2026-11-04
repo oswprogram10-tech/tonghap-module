@@ -319,6 +319,8 @@
   margin: 8px 0;
 }
 .bd-team h3 small {
+  /* 인원 수는 항상 다음 줄에 두어 팀 카드끼리 줄이 맞게 한다 */
+  display: block;
   font-size: 28px;
   font-weight: 400;
 }
@@ -464,16 +466,18 @@
 }
 .bd-week td {
   text-align: center;
-  font-size: 22px;
+  font-size: 30px;
 }
 .bd-week th {
-  font-size: 20px;
+  font-size: 26px;
 }
 .bd-w-yes {
   color: #1a7f37;
 }
 .bd-w-no {
-  color: #6a717b;
+  /* 칠판에서 멀리서도 보이게 진하게 */
+  color: #4b5560;
+  font-weight: 700;
 }
 .bd-w-none {
   color: #a8adb5;
