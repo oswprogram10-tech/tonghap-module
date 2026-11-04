@@ -72,7 +72,9 @@ for (const [name, spec] of Object.entries(config)) {
   const extractDir = join(work, 'x');
   mkdirSync(extractDir);
   // 윈도우 10 이상에 기본 포함된 tar(bsdtar)는 zip을 풀 수 있다.
-  execFileSync('tar', ['-xf', zipPath, '-C', extractDir], { stdio: 'inherit' });
+  // Git Bash에서 실행하면 PATH의 GNU tar가 먼저 잡혀 'C:'를 원격 호스트로 읽으므로 시스템 tar를 절대 경로로 쓴다.
+  const tar = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe');
+  execFileSync(tar, ['-xf', zipPath, '-C', extractDir], { stdio: 'inherit' });
 
   const found = spec.keep.map((file) => [file, findFile(extractDir, file)]);
   const missing = found.filter(([, p]) => !p).map(([f]) => f);
