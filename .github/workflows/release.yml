@@ -1,0 +1,118 @@
+name: 릴리스 (초안)
+
+# v* 태그를 푸시하면 윈도우 설치 파일을 만들어 **초안(draft)** 릴리스로 올린다. 공개는 사람이 한다.
+# 같은 태그로 다시 돌리면(workflow_dispatch) 기존 초안을 갱신한다. 절차: docs/RELEASING.md
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '다시 만들 태그 (예: v0.12.0)'
+        required: true
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: 설치 파일 빌드와 초안 릴리스
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ github.event.inputs.tag || github.ref_name }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 태그와 파일의 버전 확인
+        run: |
+          node -e '
+            const fs = require("fs");
+            const tag = process.env.TAG;
+            if (!/^v\d+\.\d+\.\d+$/.test(tag)) { console.error("태그 이름이 v숫자.숫자.숫자 형식이 아닙니다: " + tag); process.exit(1); }
+            const want = tag.slice(1);
+            const found = {
+              "package.json": JSON.parse(fs.readFileSync("package.json", "utf8")).version,
+              "src-tauri/tauri.conf.json": JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8")).version,
+              "src-tauri/Cargo.toml": (fs.readFileSync("src-tauri/Cargo.toml", "utf8").match(/^version\s*=\s*"([^"]+)"/m) || [])[1],
+            };
+            let bad = false;
+            for (const [f, v] of Object.entries(found)) {
+              if (v !== want) { console.error("버전이 맞지 않습니다: " + f + " 은(는) " + v + ", 태그는 " + want); bad = true; }
+            }
+            if (bad) { console.error("세 파일의 버전을 태그와 같게 고친 뒤 태그를 다시 만들어 주세요."); process.exit(1); }
+            console.log("버전 확인: " + want);
+          '
+
+      - name: 변경 내용(CHANGELOG) 구역 뽑기
+        run: node scripts/changelog.mjs "${TAG#v}" "$RUNNER_TEMP/release-notes.md"
+
+      - run: npm ci
+      - run: npm run validate:data
+      - run: npm test
+      - run: npm run fetch:engines
+      # Rust 단위 테스트는 프론트엔드 빌드 결과(dist)가 있어야 컴파일된다.
+      - run: npm run build
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      # 코드 서명 전 단계: 서명되지 않은 설치 파일이 만들어진다.
+      - run: npx tauri build --bundles nsis
+
+      - name: SHA-256 계산
+        run: |
+          set -euo pipefail
+          dir=src-tauri/target/release/bundle/nsis
+          shopt -s nullglob
+          files=("$dir"/*-setup.exe)
+          if [ "${#files[@]}" -ne 1 ]; then
+            echo "설치 파일(*-setup.exe)이 정확히 1개여야 하는데 ${#files[@]}개입니다." >&2
+            ls -la "$dir" >&2 || true
+            exit 1
+          fi
+          echo "INSTALLER=${files[0]}" >> "$GITHUB_ENV"
+          node -e '
+            const fs = require("fs"), path = require("path"), crypto = require("crypto");
+            const f = process.argv[1];
+            const h = crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex");
+            const line = h + "  " + path.basename(f) + "\n";
+            fs.writeFileSync("SHA256SUMS.txt", line);
+            console.log(line);
+          ' "${files[0]}"
+
+      - name: 초안 릴리스 만들기·갱신 (공개하지 않음)
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/release-notes.md"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            is_draft=$(gh release view "$TAG" --json isDraft --jq .isDraft)
+            if [ "$is_draft" != "true" ]; then
+              echo "이미 공개된 릴리스 $TAG 입니다. 공개된 릴리스는 이 워크플로가 고치지 않습니다. 새 버전으로 태그를 만들어 주세요." >&2
+              exit 1
+            fi
+            gh release edit "$TAG" --draft --title "바슬즐 탐험대 $TAG" --notes-file "$notes"
+            gh release upload "$TAG" "$INSTALLER" SHA256SUMS.txt --clobber
+          else
+            gh release create "$TAG" "$INSTALLER" SHA256SUMS.txt --draft --verify-tag \
+              --title "바슬즐 탐험대 $TAG" --notes-file "$notes"
+          fi
+          gh release view "$TAG" --json isDraft,url --jq '"초안 릴리스: " + .url + " (draft=" + (.isDraft|tostring) + ")"'
