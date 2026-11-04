@@ -1,5 +1,5 @@
 // 화면 E2E 공용 도구: tauri-driver 실행, WebDriver 연결, 기다리기, 실패 스크린숏.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -41,7 +41,53 @@ async function waitForDriver(child) {
   throw new Error('tauri-driver가 30초 안에 준비되지 않았습니다.');
 }
 
-/** tauri-driver를 띄우고 앱을 실행한 WebDriver를 돌려준다. */
+// ---- 프로세스 정리: 실패해도 자식(tauri-driver, msedgedriver, 앱)이 남아 테스트가 끝나지 않는 일이 없게 한다 ----
+
+const children = new Set();
+const IMAGES = ['tonghap-module.exe', 'msedgedriver.exe', 'tauri-driver.exe'];
+
+/** 동기적으로 프로세스 트리와 이름이 같은 잔여 프로세스를 모두 끈다(종료 직전에도 호출 가능). */
+export function killAllSync() {
+  if (process.platform !== 'win32') {
+    for (const c of children) {
+      try {
+        c.kill('SIGKILL');
+      } catch {
+        // 이미 끝남
+      }
+    }
+    return;
+  }
+  for (const c of children) {
+    if (c.pid) spawnSync('taskkill', ['/PID', String(c.pid), '/T', '/F'], { stdio: 'ignore' });
+  }
+  for (const image of IMAGES) spawnSync('taskkill', ['/IM', image, '/T', '/F'], { stdio: 'ignore' });
+}
+process.on('exit', killAllSync);
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK']) {
+  process.on(sig, () => {
+    killAllSync();
+    process.exit(1);
+  });
+}
+
+function pipeWithPrefix(stream, prefix) {
+  let rest = '';
+  stream.setEncoding('utf8');
+  stream.on('data', (chunk) => {
+    const lines = (rest + chunk).split(/\r?\n/);
+    rest = lines.pop() ?? '';
+    for (const l of lines) console.log(`${prefix} ${l}`);
+  });
+  stream.on('end', () => {
+    if (rest) console.log(`${prefix} ${rest}`);
+  });
+}
+
+const withTimeout = (promise, ms, what) =>
+  Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what}이(가) ${ms / 1000}초 안에 끝나지 않았습니다.`)), ms).unref())]);
+
+/** tauri-driver를 띄우고 앱을 실행한 WebDriver를 돌려준다. 실패하면 남은 프로세스를 모두 끄고 던진다. */
 export async function startSession(dataDir) {
   for (const [name, p] of [['앱 실행 파일(TONGHAP_E2E_APP)', config.app], ['msedgedriver(MSEDGEDRIVER_PATH)', config.nativeDriver]]) {
     if (!p || !fs.existsSync(p)) throw new Error(`${name}을(를) 찾을 수 없습니다: ${p || '(지정 안 됨)'}`);
@@ -49,32 +95,44 @@ export async function startSession(dataDir) {
   // 환경 변수는 tauri-driver → msedgedriver → 앱으로 이어서 전달된다.
   const env = { ...process.env, TONGHAP_DATA_DIR: dataDir };
   const args = ['--native-driver', config.nativeDriver];
-  const child = spawn(config.tauriDriver, args, { env, stdio: ['ignore', 'inherit', 'inherit'] });
+  console.log(`[e2e] 실행: ${config.tauriDriver} ${args.join(' ')}`);
+  console.log(`[e2e] 앱: ${config.app}`);
+  console.log(`[e2e] TONGHAP_DATA_DIR=${dataDir}`);
+  const child = spawn(config.tauriDriver, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  children.add(child);
+  pipeWithPrefix(child.stdout, '[tauri-driver]');
+  pipeWithPrefix(child.stderr, '[tauri-driver!]');
   child.on('error', (e) => console.error('tauri-driver 실행 실패:', e.message));
-  await waitForDriver(child);
+  const session = { driver: null, child };
 
-  const caps = new Capabilities();
-  caps.set('tauri:options', { application: config.app });
-  caps.setBrowserName('wry');
-  const driver = await new Builder().usingServer(DRIVER_URL).withCapabilities(caps).build();
-  await driver.manage().setTimeouts({ script: 30_000 });
-  return { driver, child };
+  try {
+    await waitForDriver(child);
+    const caps = new Capabilities();
+    caps.set('tauri:options', { application: config.app });
+    caps.setBrowserName('wry');
+    console.log('[e2e] 보낼 capabilities:', JSON.stringify([...caps.keys()].reduce((o, k) => ({ ...o, [k]: caps.get(k) }), {})));
+    session.driver = await withTimeout(new Builder().usingServer(DRIVER_URL).withCapabilities(caps).build(), 120_000, '세션 만들기');
+    await session.driver.manage().setTimeouts({ script: 30_000 });
+    return session;
+  } catch (e) {
+    await stopSession(session);
+    throw e;
+  }
 }
 
 export async function stopSession(session) {
   if (!session) return;
-  try {
-    await session.driver.quit();
-  } catch {
-    // 이미 끝남
-  }
-  if (session.child.exitCode === null) {
-    session.child.kill();
-    // 윈도우에서 자식(msedgedriver·앱)까지 정리
-    if (process.platform === 'win32') {
-      spawn('taskkill', ['/pid', String(session.child.pid), '/T', '/F'], { stdio: 'ignore' });
+  if (session.driver) {
+    try {
+      await withTimeout(session.driver.quit(), 15_000, 'driver.quit');
+    } catch {
+      // 이미 끝났거나 응답 없음: 아래에서 강제로 끈다
     }
   }
+  killAllSync();
+  children.delete(session.child);
+  session.child.stdout?.destroy();
+  session.child.stderr?.destroy();
 }
 
 /** 실패했을 때 모든 창의 스크린숏과 HTML을 e2e/out에 저장한다. */

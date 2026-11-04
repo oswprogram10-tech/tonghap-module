@@ -47,7 +47,7 @@ describe('화면 E2E', { concurrency: false }, () => {
     session = await startSession(dataDir);
     driver = session.driver;
     mainHandle = await driver.getWindowHandle();
-  });
+  }, { timeout: 180_000 });
 
   after(async () => {
     await stopSession(session);
@@ -57,7 +57,7 @@ describe('화면 E2E', { concurrency: false }, () => {
     } catch {
       // 윈도우에서 아직 잠겨 있을 수 있음. 임시 폴더라 남겨 둬도 된다.
     }
-  });
+  }, { timeout: 60_000 });
 
   /** 시나리오 하나. 실패하면 모든 창의 스크린숏을 e2e/out에 저장한다. */
   const scenario = (name, fn) =>

@@ -24,7 +24,7 @@ jobs:
   e2e:
     name: 윈도우 화면 E2E
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -59,14 +59,23 @@ jobs:
       - run: npm run build
       - run: npx tauri build --debug --no-bundle
 
+      # 진단: 앱이 WebDriver 없이도 시작 직후 죽지 않는지, WebView2가 디버그 포트를 여는지 확인한다.
+      # (DevToolsActivePort 오류가 캡처 설정 문제인지 앱 시작 실패인지 가르기 위함)
+      - name: 앱 단독 실행 진단
+        shell: pwsh
+        continue-on-error: true
+        timeout-minutes: 3
+        run: ./e2e/scripts/smoke-launch.ps1 -App "${{ github.workspace }}\src-tauri\target\debug\tonghap-module.exe"
+
       - name: 화면 E2E 실행
+        timeout-minutes: 20
         run: npm run e2e
         env:
           TONGHAP_E2E_APP: ${{ github.workspace }}\src-tauri\target\debug\tonghap-module.exe
           TAURI_DRIVER_PATH: tauri-driver
 
       - name: 실패 스크린숏 올리기
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-failure-screenshots
