@@ -36,15 +36,21 @@ node --test ml/synth/generate-bundles.test.mjs
 
 - 문장 재료는 `data/synthetic/phrases.json`(검증: `node scripts/validate-synthetic.mjs`). 이름·금지 표현·묶음 안 중복을 검사한다.
 
-## A. 교사 예시 (사용자)
+## A. 문체 예시
 
-`ml/data/teacher-examples.jsonl` — 실명·실제 학생 정보를 지운 평어 50~100개.
+### A-1. AI가 만든 문체 예시 (있음)
 
-```json
-{"subject":"슬","style":"ham","text":"궁금한 것이 생기면 질문하며 …함."}
-```
+`ml/data/style-examples.jsonl` — 교사가 예시를 주기 전까지 쓰는 출발점. 72개(교과별 48 = 주제책 16권 × 바·슬·즐, 세 교과 통합본 24 = 학년·학기마다 6개). 모두 지어낸 활동이며 실제 학생 기록이 아니다(`"source": "ai-draft"`).
 
-`style`은 `ham`(~함) / `eum`(~하였음) / `boim`(~하는 모습을 보임).
+- 근거: 「학교생활기록 작성 및 관리지침」(교육부훈령, 2026.3.1. 시행) 제15조 제2항 — 1·2학년 바른생활·슬기로운 생활·즐거운 생활은 「성취수준 및 특기사항」에 **통합하여 입력**. 기재요령 — 세 교과가 누락되지 않게 종합하고, 명사형 어미로 종결하며, 특수문자·번호 기호는 지양.
+- 한 줄 예: `{"id":"int-01","source":"ai-draft","kind":"integrated","grade":1,"semester":1,"topics":["학교","사람들"],"standards":["[2바01-01]",…],"style":"ham","profile":"고르게 참여","text":"…함. …함."}`
+  - `kind`: `subject`(한 교과 1~2문장, 40~200자) / `integrated`(세 교과 통합, 200~500자). `profile`은 학습용 설명이고 평어에 들어가지 않는다.
+- 검증: `node scripts/validate-style-examples.mjs` (`npm run validate:data`에 포함). 금지 표현, 「학생」·이름 자리표시, 특수문자·번호, 문장마다 명사형 종결, 문체(`ham`/`eum`/`boim`) 일관, 통합본의 세 교과 성취기준, 주제책과 학년·학기 대응을 검사한다.
+- **교사 검수 필요**: 학교 문체와 다르면 고치거나 지우고, 교사가 쓴 예시는 `"source": "teacher"`로 같은 파일에 더한다.
+
+### A-2. 교사 예시 (사용자)
+
+`ml/data/teacher-examples.jsonl` — 실명·실제 학생 정보를 지운 평어 50~100개. 받으면 A-1과 같은 형식(`source: "teacher"`)으로 옮겨 검증한다.
 
 ## C. 목표 출력 만들기
 
