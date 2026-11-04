@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { copyText } from '../lib/clipboard';
 import { errorText } from '../records/api';
 import { shorten } from '../records/util';
 import { standardByCode } from '../records/util';
@@ -167,7 +168,7 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
 
   const copy = () =>
     run(async () => {
-      await navigator.clipboard.writeText(joinSentences(saved));
+      await copyText(joinSentences(saved));
       setInfo('복사했습니다. 나이스에 붙여 넣으세요.');
     });
 

@@ -130,6 +130,17 @@ pub fn e2e_dialog_next(kind: String) -> Result<Option<Vec<String>>, String> {
     next_dialog(cfg!(debug_assertions), std::env::var_os("TONGHAP_E2E_DIALOG_DIR").filter(|v| !v.is_empty()).map(PathBuf::from), &kind)
 }
 
+/// 디버그 전용 기록 장치(복사한 글을 `window.__lastCopied`에 남기기)를 켤지. 릴리스(`debug == false`)에서는 항상 꺼짐.
+fn debug_hooks_enabled(debug: bool) -> bool {
+    debug
+}
+
+/// 화면이 묻는다: 디버그 빌드이면 true. 클립보드 래퍼가 E2E용 `window.__lastCopied` 기록을 남길지 정하는 데만 쓴다.
+#[tauri::command]
+pub fn e2e_debug_hooks() -> bool {
+    debug_hooks_enabled(cfg!(debug_assertions))
+}
+
 /// 자막 테스트용 모델 파일(디버그 빌드 + TONGHAP_E2E_STT_MODEL). 릴리스에서는 항상 `None`.
 pub fn stt_model_override() -> Option<PathBuf> {
     if !cfg!(debug_assertions) {
@@ -141,6 +152,13 @@ pub fn stt_model_override() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_hooks_are_off_in_release_and_follow_the_build() {
+        assert!(!debug_hooks_enabled(false));
+        assert!(debug_hooks_enabled(true));
+        assert_eq!(e2e_debug_hooks(), cfg!(debug_assertions));
+    }
 
     #[test]
     fn nothing_set_means_no_overrides() {

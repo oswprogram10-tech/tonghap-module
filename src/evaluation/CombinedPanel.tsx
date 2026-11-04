@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { copyText } from '../lib/clipboard';
 import { errorText } from '../records/api';
 import { evalApi, type CombinedCheck, type CombinedKey, type CombinedView } from './api';
 
@@ -113,7 +114,7 @@ export default function CombinedPanel({ studentId, from, to, refresh, onChanged 
 
   const copy = () =>
     run(async () => {
-      await navigator.clipboard.writeText(saved);
+      await copyText(saved);
       setInfo('복사했습니다. 나이스 「성취수준 및 특기사항」에 붙여 넣으세요.');
     });
 

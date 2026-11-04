@@ -73,6 +73,7 @@ pub fn run() {
             webdriver::webdriver_overrides_active,
             webdriver::board_open_with_overrides,
             webdriver::e2e_dialog_next,
+            webdriver::e2e_debug_hooks,
             about::about_storage,
             logging::log_frontend_error,
             support::support_preview,
