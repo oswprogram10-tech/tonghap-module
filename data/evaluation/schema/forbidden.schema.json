@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "평어 금지 표현",
+  "description": "평어 초안에서 경고할 표현. 시작용 목록이며 교사가 학교 기재요령에 맞춰 고친다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dataVersion", "categories", "entries"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "dataVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "note": { "type": "string" },
+    "categories": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ranking", "outside", "family", "stigma", "personal"],
+      "properties": {
+        "ranking": { "type": "string" },
+        "outside": { "type": "string" },
+        "family": { "type": "string" },
+        "stigma": { "type": "string" },
+        "personal": { "type": "string" }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "category", "kind", "pattern"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z]+-\\d+$" },
+          "category": { "enum": ["ranking", "outside", "family", "stigma", "personal"] },
+          "kind": { "enum": ["word", "regex"], "description": "word는 글자 그대로, regex는 정규식(앞뒤 확인·역참조 없는 간단한 꼴)" },
+          "pattern": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "except": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "이 낱말 안에서는 일치로 치지 않는다(예: 가장자리)" }
+        }
+      }
+    }
+  }
+}

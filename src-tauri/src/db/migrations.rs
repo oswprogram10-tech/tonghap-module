@@ -195,6 +195,25 @@ CREATE TABLE parent_reports (
 );
 CREATE INDEX idx_parent_reports_class ON parent_reports(class_id);
 "#,
+    // 6: 생기부 평어 초안
+    r#"
+CREATE TABLE evaluation_drafts (
+  id TEXT PRIMARY KEY,
+  class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  student_id TEXT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  subject TEXT NOT NULL CHECK (subject IN ('바', '슬', '즐')),
+  period_from TEXT NOT NULL,
+  period_to TEXT NOT NULL,
+  sentences TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'confirmed')),
+  generator TEXT NOT NULL DEFAULT 'template',
+  confirmed_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (student_id, subject, period_from, period_to)
+);
+CREATE INDEX idx_evaluation_drafts_class ON evaluation_drafts(class_id, subject);
+"#,
 ];
 
 pub fn latest_version() -> i64 {
@@ -231,10 +250,11 @@ mod tests {
         apply(&conn).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, latest_version());
-        assert_eq!(v, 5);
+        assert_eq!(v, 6);
         for table in [
             "classes", "students", "observations", "observation_students", "observation_standards", "observation_tags", "attachments", "settings",
             "units", "unit_stages", "unit_sessions", "unit_session_standards", "custom_plays", "play_log", "habits", "habit_checks", "parent_reports",
+            "evaluation_drafts",
         ] {
             let n: i64 = conn
                 .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0))
@@ -334,7 +354,7 @@ mod tests {
              INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s', 'c', 1, '김하늘', 't');",
         )
         .unwrap();
-        apply(&conn).unwrap();
+        apply_up_to(&conn, 5).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, 5);
         let name: String = conn.query_row("SELECT name FROM students WHERE id = 's'", [], |r| r.get(0)).unwrap();
@@ -348,6 +368,34 @@ mod tests {
         // 학생을 지우면 리포트도 함께 지워진다.
         conn.execute("DELETE FROM students WHERE id = 's'", []).unwrap();
         let n: i64 = conn.query_row("SELECT count(*) FROM parent_reports", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn migration_6_keeps_version_5_data_and_adds_evaluation_drafts() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        apply_up_to(&conn, 5).unwrap();
+        conn.execute_batch(
+            "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c', 2027, 1, '1반', 't');
+             INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s', 'c', 1, '김하늘', 't');",
+        )
+        .unwrap();
+        apply(&conn).unwrap();
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, 6);
+        let name: String = conn.query_row("SELECT name FROM students WHERE id = 's'", [], |r| r.get(0)).unwrap();
+        assert_eq!(name, "김하늘");
+        let insert = "INSERT INTO evaluation_drafts (id, class_id, student_id, subject, period_from, period_to, created_at, updated_at)
+                      VALUES (?1, 'c', 's', ?2, '2027-03-02', '2027-07-18', 't', 't')";
+        conn.execute(insert, ["d1", "슬"]).unwrap();
+        // 같은 학생·교과·기간은 하나만, 알 수 없는 교과·상태는 거부.
+        assert!(conn.execute(insert, ["d2", "슬"]).is_err());
+        assert!(conn.execute(insert, ["d3", "수"]).is_err());
+        assert!(conn.execute("UPDATE evaluation_drafts SET status = 'bogus' WHERE id = 'd1'", []).is_err());
+        // 학생을 지우면 초안도 함께 지워진다.
+        conn.execute("DELETE FROM students WHERE id = 's'", []).unwrap();
+        let n: i64 = conn.query_row("SELECT count(*) FROM evaluation_drafts", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 0);
     }
 }

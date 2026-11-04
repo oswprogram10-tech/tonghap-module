@@ -118,7 +118,7 @@ pub struct Period {
     pub to: String,
 }
 
-fn parse_date(s: &str) -> DbResult<NaiveDate> {
+pub(crate) fn parse_date(s: &str) -> DbResult<NaiveDate> {
     NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| "날짜 형식이 올바르지 않습니다".to_string())
 }
 
@@ -127,7 +127,7 @@ fn fmt(d: NaiveDate) -> String {
 }
 
 /// 기간을 검사하고 (시작, 끝, 일수)를 돌려준다.
-fn check_period(from: &str, to: &str) -> DbResult<(String, String, i64)> {
+pub(crate) fn check_period(from: &str, to: &str) -> DbResult<(String, String, i64)> {
     let (f, t) = (parse_date(from)?, parse_date(to)?);
     if f > t {
         return Err("시작일이 끝일보다 늦습니다".to_string());
@@ -141,13 +141,13 @@ fn check_period(from: &str, to: &str) -> DbResult<(String, String, i64)> {
 
 /// 학급의 다른 학생 이름(전체 이름, 성을 뗀 이름)을 "친구"로 바꾼다. 이 아이 이름은 지키고,
 /// 한 글자 이름은 일반 낱말을 망가뜨리므로 바꾸지 않는다.
-struct Scrubber {
+pub(crate) struct Scrubber {
     own: Vec<String>,
     others: Vec<String>,
 }
 
 impl Scrubber {
-    fn new(conn: &Connection, class_id: &str, student_id: &str) -> DbResult<Self> {
+    pub(crate) fn new(conn: &Connection, class_id: &str, student_id: &str) -> DbResult<Self> {
         let all = students::list(conn, class_id, true)?;
         let mut own = Vec::new();
         let mut others: Vec<String> = Vec::new();
@@ -177,7 +177,22 @@ impl Scrubber {
         Ok(Scrubber { own, others })
     }
 
-    fn scrub(&self, text: &str) -> String {
+    /// 다른 학생 이름을 "친구"로 바꾸고 이 아이 이름은 그대로 둔다.
+    pub(crate) fn scrub(&self, text: &str) -> String {
+        self.scrub_inner(text, None)
+    }
+
+    /// 다른 학생 이름은 "친구", 이 아이 이름은 `alias`로 바꾼다(평어 근거 묶음용).
+    pub(crate) fn scrub_own_to(&self, text: &str, alias: &str) -> String {
+        self.scrub_inner(text, Some(alias))
+    }
+
+    /// 학급의 다른 학생 이름(전체 이름과 성을 뗀 이름).
+    pub(crate) fn other_names(&self) -> &[String] {
+        &self.others
+    }
+
+    fn scrub_inner(&self, text: &str, own_to: Option<&str>) -> String {
         // 이 아이 이름이 다른 이름의 일부여도 망가지지 않도록 먼저 자리표시자로 바꿔 둔다.
         let mut out = text.to_string();
         for (i, o) in self.own.iter().enumerate() {
@@ -186,17 +201,25 @@ impl Scrubber {
             }
         }
         for n in &self.others {
-            // "서준이가"처럼 이름 뒤에 붙은 호칭 "이"까지 함께 지운다.
-            for suffix in ["이가", "이는", "이도", "이를", "이랑", "이와", "이한테", "이에게", "이의"] {
-                out = out.replace(&format!("{n}{suffix}"), &format!("{FRIEND}{}", &suffix["이".len()..]));
-            }
-            out = out.replace(n.as_str(), FRIEND);
+            out = replace_name(out, n, FRIEND);
         }
         for (i, o) in self.own.iter().enumerate() {
-            out = out.replace(&format!("\u{1}{i}\u{1}"), o);
+            let placeholder = format!("\u{1}{i}\u{1}");
+            out = match own_to {
+                Some(alias) => replace_name(out, &placeholder, alias),
+                None => out.replace(&placeholder, o),
+            };
         }
         out
     }
+}
+
+/// 이름을 `to`로 바꾼다. "서준이가"처럼 이름 뒤에 붙은 호칭 "이"도 함께 지운다.
+fn replace_name(mut out: String, name: &str, to: &str) -> String {
+    for suffix in ["이가", "이는", "이도", "이를", "이랑", "이와", "이한테", "이에게", "이의"] {
+        out = out.replace(&format!("{name}{suffix}"), &format!("{to}{}", &suffix["이".len()..]));
+    }
+    out.replace(name, to)
 }
 
 fn candidate(o: &observations::Observation, student_id: &str, sc: &Scrubber) -> Candidate {

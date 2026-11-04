@@ -531,3 +531,32 @@ fn restoring_a_version_4_backup_migrates_it_to_the_parent_report_schema() {
     let reports: i64 = conn.query_row("SELECT count(*) FROM parent_reports", [], |r| r.get(0)).unwrap();
     assert_eq!(reports, 0);
 }
+
+#[test]
+fn restoring_a_version_5_backup_migrates_it_to_the_evaluation_schema() {
+    let src = tmp("v5").join("data");
+    std::fs::create_dir_all(src.join("media")).unwrap();
+    let v5 = Connection::open(src.join("tonghap.db")).unwrap();
+    crate::db::migrations::apply_up_to(&v5, 5).unwrap();
+    v5.execute_batch(
+        "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c1', 2027, 1, '1반', 't');
+         INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s1', 'c1', 1, '김하늘', 't');
+         INSERT INTO parent_reports (id, class_id, student_id, period_from, period_to, message, created_at, updated_at)
+           VALUES ('r1', 'c1', 's1', '2027-03-01', '2027-04-01', '옛 리포트', 't', 't');",
+    )
+    .unwrap();
+    let src_db = Mutex::new(v5);
+    let file = make_backup(&src_db, &src);
+    assert_eq!(inspect(&file, PW).unwrap().schema_version, 5);
+
+    let (target, tdb) = seeded("v5-target");
+    run_restore(&tdb, &target, &file, PW).unwrap();
+
+    let conn = tdb.lock().unwrap();
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+    assert_eq!(version, crate::db::migrations::latest_version());
+    let message: String = conn.query_row("SELECT message FROM parent_reports WHERE id = 'r1'", [], |r| r.get(0)).unwrap();
+    assert_eq!(message, "옛 리포트");
+    let drafts: i64 = conn.query_row("SELECT count(*) FROM evaluation_drafts", [], |r| r.get(0)).unwrap();
+    assert_eq!(drafts, 0);
+}

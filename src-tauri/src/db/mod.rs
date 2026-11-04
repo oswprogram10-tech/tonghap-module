@@ -4,6 +4,7 @@
 
 pub mod attachments;
 pub mod classes;
+pub mod evaluation;
 pub mod habits;
 pub mod migrations;
 pub mod observations;

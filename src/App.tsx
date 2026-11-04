@@ -6,6 +6,7 @@ import { SEMESTERS, areaOf, curriculum, standardsOf, topicsOf } from './curricul
 import type { TopicBook, Verification } from './curriculum/types';
 import BackupView from './backup/BackupView';
 import DiagView from './diag/DiagView';
+import EvalView from './evaluation/EvalView';
 import PortfolioView from './records/PortfolioView';
 import RecordView from './records/RecordView';
 import UnitsView from './units/UnitsView';
@@ -16,7 +17,7 @@ interface AppInfo {
   arch: string;
 }
 
-type View = 'record' | 'portfolio' | 'units' | 'topics' | 'diag' | 'backup';
+type View = 'record' | 'portfolio' | 'eval' | 'units' | 'topics' | 'diag' | 'backup';
 
 const VERIFICATION_LABEL: Record<Verification, string> = {
   'unverified-spec': '원문 확인 필요',
@@ -53,6 +54,9 @@ export default function App() {
           <button className={view === 'portfolio' ? 'tab active' : 'tab'} onClick={() => setView('portfolio')}>
             포트폴리오
           </button>
+          <button className={view === 'eval' ? 'tab active' : 'tab'} onClick={() => setView('eval')}>
+            평어
+          </button>
           <button className={view === 'units' ? 'tab active' : 'tab'} onClick={() => setView('units')}>
             단원
           </button>
@@ -86,6 +90,8 @@ export default function App() {
         <RecordView key={dataKey} onGoBackup={() => setView('backup')} />
       ) : view === 'portfolio' ? (
         <PortfolioView key={dataKey} />
+      ) : view === 'eval' ? (
+        <EvalView key={dataKey} />
       ) : view === 'units' ? (
         <UnitsView key={dataKey} />
       ) : view === 'topics' ? (

@@ -1,0 +1,540 @@
+{
+  "$schema": "./schema/templates.schema.json",
+  "dataVersion": "0.1.0",
+  "note": "템플릿 생성기의 문장 틀. {E}는 교사가 고른 문체의 종결(함·하였음·하는 모습을 보임)로 바뀐다. {슬롯|을/를} 꼴로 조사를 붙인다.",
+  "endings": {
+    "ham": "함",
+    "eum": "하였음",
+    "boim": "하는 모습을 보임"
+  },
+  "tagGroups": {
+    "바": {
+      "실천": "practice",
+      "습관": "practice",
+      "배려": "care",
+      "안전": "safety"
+    },
+    "슬": {
+      "탐구": "inquiry",
+      "질문": "question"
+    },
+    "즐": {
+      "놀이": "play",
+      "표현": "express",
+      "협력": "cooperate"
+    }
+  },
+  "templates": [
+    {
+      "id": "obs-ba-practice-1",
+      "kind": "observation",
+      "subject": "바",
+      "group": "practice",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 배운 바른 행동을 생활 속에서 실천{E}"
+    },
+    {
+      "id": "obs-ba-practice-2",
+      "kind": "observation",
+      "subject": "바",
+      "group": "practice",
+      "text": "{note} 경험을 통해 약속과 생활 습관을 스스로 지키려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-practice-3",
+      "kind": "observation",
+      "subject": "바",
+      "group": "practice",
+      "text": "{note} 과정에서 알게 된 바른 생활 방법을 자신의 생활에 적용하여 실천{E}"
+    },
+    {
+      "id": "obs-ba-practice-4",
+      "kind": "observation",
+      "subject": "바",
+      "group": "practice",
+      "text": "'{quote}'라고 말하며 배운 내용을 생활 속에서 실천하려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-practice-5",
+      "kind": "observation",
+      "subject": "바",
+      "group": "practice",
+      "text": "{topic} 활동에서 '{quote}'라고 말하며 바른 습관을 몸에 익히려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-care-1",
+      "kind": "observation",
+      "subject": "바",
+      "group": "care",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 친구의 마음을 헤아리며 배려{E}"
+    },
+    {
+      "id": "obs-ba-care-2",
+      "kind": "observation",
+      "subject": "바",
+      "group": "care",
+      "text": "{note} 경험을 통해 친구를 존중하고 배려하는 마음을 실천{E}"
+    },
+    {
+      "id": "obs-ba-care-3",
+      "kind": "observation",
+      "subject": "바",
+      "group": "care",
+      "text": "{note} 과정에서 친구와 서로 도우며 사이좋게 지내려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-care-4",
+      "kind": "observation",
+      "subject": "바",
+      "group": "care",
+      "text": "'{quote}'라고 말하며 친구의 입장을 생각하고 배려하려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-care-5",
+      "kind": "observation",
+      "subject": "바",
+      "group": "care",
+      "text": "{topic} 활동에서 '{quote}'라고 말하며 따뜻한 마음을 실천{E}"
+    },
+    {
+      "id": "obs-ba-safety-1",
+      "kind": "observation",
+      "subject": "바",
+      "group": "safety",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 안전 규칙을 지키려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-safety-2",
+      "kind": "observation",
+      "subject": "바",
+      "group": "safety",
+      "text": "{note} 경험을 통해 안전하게 행동하는 방법을 익히고 실천{E}"
+    },
+    {
+      "id": "obs-ba-safety-3",
+      "kind": "observation",
+      "subject": "바",
+      "group": "safety",
+      "text": "{note} 과정에서 위험한 상황을 살펴보고 안전을 지키려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-safety-4",
+      "kind": "observation",
+      "subject": "바",
+      "group": "safety",
+      "text": "'{quote}'라고 말하며 안전 약속을 떠올리고 실천{E}"
+    },
+    {
+      "id": "obs-ba-safety-5",
+      "kind": "observation",
+      "subject": "바",
+      "group": "safety",
+      "text": "{topic} 활동에서 '{quote}'라고 말하며 안전한 행동을 익히려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-general-1",
+      "kind": "observation",
+      "subject": "바",
+      "group": "general",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 바른 생활을 실천하려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-general-2",
+      "kind": "observation",
+      "subject": "바",
+      "group": "general",
+      "text": "{note} 경험을 자신의 생활과 연결하여 생각{E}"
+    },
+    {
+      "id": "obs-ba-general-3",
+      "kind": "observation",
+      "subject": "바",
+      "group": "general",
+      "text": "{note} 과정에서 맡은 일을 책임감 있게 해내려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-general-4",
+      "kind": "observation",
+      "subject": "바",
+      "group": "general",
+      "text": "'{quote}'라고 말하며 바른 생활 태도를 갖추려고 노력{E}"
+    },
+    {
+      "id": "obs-ba-general-5",
+      "kind": "observation",
+      "subject": "바",
+      "group": "general",
+      "text": "{topic} 활동에서 '{quote}'라고 말하며 배운 내용을 생활에 적용하려고 노력{E}"
+    },
+    {
+      "id": "obs-seul-inquiry-1",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "inquiry",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 궁금한 것을 직접 살펴보고 알아내려고 탐구{E}"
+    },
+    {
+      "id": "obs-seul-inquiry-2",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "inquiry",
+      "text": "{note} 경험을 바탕으로 알게 된 점을 말로 표현하며 탐구{E}"
+    },
+    {
+      "id": "obs-seul-inquiry-3",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "inquiry",
+      "text": "{note} 과정에서 주변 사물과 현상을 호기심 있게 탐구{E}"
+    },
+    {
+      "id": "obs-seul-inquiry-4",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "inquiry",
+      "text": "'{quote}'라고 말하며 알게 된 점을 이야기하고 탐구{E}"
+    },
+    {
+      "id": "obs-seul-inquiry-5",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "inquiry",
+      "text": "{topic} 활동에서 '{quote}'라고 말하며 직접 살펴보고 탐구{E}"
+    },
+    {
+      "id": "obs-seul-question-1",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "question",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 궁금한 점을 떠올려 질문{E}"
+    },
+    {
+      "id": "obs-seul-question-2",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "question",
+      "text": "{note} 경험을 통해 더 알고 싶은 것을 스스로 물으며 질문{E}"
+    },
+    {
+      "id": "obs-seul-question-3",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "question",
+      "text": "{note} 과정에서 새롭게 궁금해진 점을 찾아 질문{E}"
+    },
+    {
+      "id": "obs-seul-question-4",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "question",
+      "text": "'{quote}'라고 말하며 궁금한 점을 적극적으로 질문{E}"
+    },
+    {
+      "id": "obs-seul-question-5",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "question",
+      "text": "{topic} 활동에서 '{quote}'라고 말하는 등 호기심을 드러내며 질문{E}"
+    },
+    {
+      "id": "obs-seul-general-1",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "general",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 배움에 적극적으로 참여{E}"
+    },
+    {
+      "id": "obs-seul-general-2",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "general",
+      "text": "{note} 경험을 통해 알게 된 점을 친구들과 나누며 생각을 넓히려고 노력{E}"
+    },
+    {
+      "id": "obs-seul-general-3",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "general",
+      "text": "{note} 과정에서 새롭게 알게 된 점을 정리{E}"
+    },
+    {
+      "id": "obs-seul-general-4",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "general",
+      "text": "'{quote}'라고 말하며 알게 된 점을 표현{E}"
+    },
+    {
+      "id": "obs-seul-general-5",
+      "kind": "observation",
+      "subject": "슬",
+      "group": "general",
+      "text": "{topic} 활동에서 '{quote}'라고 말하며 생각을 표현{E}"
+    },
+    {
+      "id": "obs-jeul-play-1",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "play",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 놀이의 규칙을 지키며 즐겁게 참여{E}"
+    },
+    {
+      "id": "obs-jeul-play-2",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "play",
+      "text": "{note} 경험을 통해 친구들과 놀이 방법을 정하며 즐겁게 활동{E}"
+    },
+    {
+      "id": "obs-jeul-play-3",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "play",
+      "text": "{note} 과정에서 놀이에 적극적으로 참여{E}"
+    },
+    {
+      "id": "obs-jeul-play-4",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "play",
+      "text": "'{quote}'라고 말하며 놀이에 즐겁게 참여{E}"
+    },
+    {
+      "id": "obs-jeul-play-5",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "play",
+      "text": "{topic} 활동에서 '{quote}'라고 말하는 등 친구들과 놀이를 즐기며 참여{E}"
+    },
+    {
+      "id": "obs-jeul-express-1",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "express",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 자신의 느낌과 생각을 자유롭게 표현{E}"
+    },
+    {
+      "id": "obs-jeul-express-2",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "express",
+      "text": "{note} 경험을 통해 다양한 방법으로 느낌을 표현{E}"
+    },
+    {
+      "id": "obs-jeul-express-3",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "express",
+      "text": "{note} 과정에서 자신만의 방법으로 생각을 즐겁게 표현{E}"
+    },
+    {
+      "id": "obs-jeul-express-4",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "express",
+      "text": "'{quote}'라고 말하며 자신의 느낌과 생각을 표현{E}"
+    },
+    {
+      "id": "obs-jeul-express-5",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "express",
+      "text": "{topic} 활동에서 '{quote}'라고 말하며 느낌을 즐겁게 표현{E}"
+    },
+    {
+      "id": "obs-jeul-cooperate-1",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "cooperate",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 친구들과 역할을 나누어 협력{E}"
+    },
+    {
+      "id": "obs-jeul-cooperate-2",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "cooperate",
+      "text": "{note} 경험을 통해 친구의 의견을 존중하며 함께 활동하려고 협력{E}"
+    },
+    {
+      "id": "obs-jeul-cooperate-3",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "cooperate",
+      "text": "{note} 과정에서 모둠 친구와 힘을 모아 협력{E}"
+    },
+    {
+      "id": "obs-jeul-cooperate-4",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "cooperate",
+      "text": "'{quote}'라고 말하며 친구와 함께 활동을 완성하려고 협력{E}"
+    },
+    {
+      "id": "obs-jeul-cooperate-5",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "cooperate",
+      "text": "{topic} 활동에서 '{quote}'라고 말하며 친구들과 즐겁게 협력{E}"
+    },
+    {
+      "id": "obs-jeul-general-1",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "general",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 활동을 즐겁게 이어 가며 참여{E}"
+    },
+    {
+      "id": "obs-jeul-general-2",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "general",
+      "text": "{note} 경험을 통해 자신의 생각과 느낌을 표현{E}"
+    },
+    {
+      "id": "obs-jeul-general-3",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "general",
+      "text": "{note} 과정에서 친구들과 함께 즐겁게 참여{E}"
+    },
+    {
+      "id": "obs-jeul-general-4",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "general",
+      "text": "'{quote}'라고 말하며 활동을 즐기고 표현{E}"
+    },
+    {
+      "id": "obs-jeul-general-5",
+      "kind": "observation",
+      "subject": "즐",
+      "group": "general",
+      "text": "{topic} 활동에서 '{quote}'라고 말하며 즐겁게 참여{E}"
+    },
+    {
+      "id": "habit-ba-high-1",
+      "kind": "habit",
+      "subject": "바",
+      "group": "high",
+      "text": "'{title}' 실천을 한 학기 동안 꾸준히 이어 가며 좋은 생활 습관을 몸에 익히려고 노력{E}"
+    },
+    {
+      "id": "habit-ba-high-2",
+      "kind": "habit",
+      "subject": "바",
+      "group": "high",
+      "text": "학급에서 함께 정한 '{title}' 약속을 대부분의 날에 스스로 지키며 실천{E}"
+    },
+    {
+      "id": "habit-ba-high-3",
+      "kind": "habit",
+      "subject": "바",
+      "group": "high",
+      "text": "'{title}' 약속을 스스로 기억하고 꾸준히 실천{E}"
+    },
+    {
+      "id": "habit-ba-mid-1",
+      "kind": "habit",
+      "subject": "바",
+      "group": "mid",
+      "text": "'{title}' 약속을 지키기 위해 스스로 점검하며 실천{E}"
+    },
+    {
+      "id": "habit-ba-mid-2",
+      "kind": "habit",
+      "subject": "바",
+      "group": "mid",
+      "text": "'{title}' 약속을 지키는 날이 늘어나도록 마음을 다잡으며 노력{E}"
+    },
+    {
+      "id": "habit-ba-mid-3",
+      "kind": "habit",
+      "subject": "바",
+      "group": "mid",
+      "text": "학급에서 함께 정한 '{title}' 약속을 실천하려고 노력{E}"
+    },
+    {
+      "id": "habit-ba-low-1",
+      "kind": "habit",
+      "subject": "바",
+      "group": "low",
+      "text": "'{title}' 약속을 지키기 위해 선생님과 함께 방법을 찾아보며 노력{E}"
+    },
+    {
+      "id": "habit-ba-low-2",
+      "kind": "habit",
+      "subject": "바",
+      "group": "low",
+      "text": "'{title}' 약속의 중요성을 알고 조금씩 실천하려고 노력{E}"
+    },
+    {
+      "id": "habit-ba-low-3",
+      "kind": "habit",
+      "subject": "바",
+      "group": "low",
+      "text": "'{title}' 실천을 이어 가기 위해 스스로 다짐하며 노력{E}"
+    },
+    {
+      "id": "session-ba-1",
+      "kind": "session",
+      "subject": "바",
+      "group": "default",
+      "text": "'{title}' 수업에서 배운 내용을 생활 속에서 실천하려고 노력{E}"
+    },
+    {
+      "id": "session-ba-2",
+      "kind": "session",
+      "subject": "바",
+      "group": "default",
+      "text": "'{title}' 활동에 성실하게 참여하며 바른 생활 태도를 익히려고 노력{E}"
+    },
+    {
+      "id": "session-ba-3",
+      "kind": "session",
+      "subject": "바",
+      "group": "default",
+      "text": "{topic} 학습의 '{title}' 활동에서 알게 된 점을 생활과 연결하여 생각{E}"
+    },
+    {
+      "id": "session-seul-1",
+      "kind": "session",
+      "subject": "슬",
+      "group": "default",
+      "text": "'{title}' 활동에 참여하며 궁금한 점을 찾아 탐구{E}"
+    },
+    {
+      "id": "session-seul-2",
+      "kind": "session",
+      "subject": "슬",
+      "group": "default",
+      "text": "'{title}' 활동에서 알아본 내용을 친구들과 이야기 나누며 탐구{E}"
+    },
+    {
+      "id": "session-seul-3",
+      "kind": "session",
+      "subject": "슬",
+      "group": "default",
+      "text": "{topic} 학습의 '{title}' 활동에서 직접 살펴보고 알게 된 점을 표현{E}"
+    },
+    {
+      "id": "session-jeul-1",
+      "kind": "session",
+      "subject": "즐",
+      "group": "default",
+      "text": "'{title}' 활동에 즐겁게 참여하며 자신의 생각과 느낌을 표현{E}"
+    },
+    {
+      "id": "session-jeul-2",
+      "kind": "session",
+      "subject": "즐",
+      "group": "default",
+      "text": "'{title}' 활동에서 친구들과 함께 즐겁게 활동하며 협력{E}"
+    },
+    {
+      "id": "session-jeul-3",
+      "kind": "session",
+      "subject": "즐",
+      "group": "default",
+      "text": "{topic} 학습의 '{title}' 활동에 흥미를 가지고 적극적으로 참여{E}"
+    }
+  ]
+}

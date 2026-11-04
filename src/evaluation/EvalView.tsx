@@ -1,0 +1,267 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { save } from '@tauri-apps/plugin-dialog';
+import { errorText, type ClassInfo } from '../records/api';
+import ClassManager from '../records/ClassManager';
+import { RecordsGate, type RecordsCtx } from '../records/useRecords';
+import {
+  LEN_MAX,
+  LEN_MIN,
+  STYLE_LABEL,
+  SUBJECT_LIST,
+  currentSemester,
+  evalApi,
+  semesterPeriod,
+  type EvalSettings,
+  type EvalStyle,
+  type StudentRow,
+  type SubjectCode,
+} from './api';
+import StudentDraft from './StudentDraft';
+
+const STATUS_LABEL = { none: '없음', draft: '초안', confirmed: '확정' } as const;
+
+export default function EvalView() {
+  return <RecordsGate what="평어 초안">{(ctx) => <EvalPanel key={ctx.cls.id} ctx={ctx} />}</RecordsGate>;
+}
+
+function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
+  const { cls, classes } = ctx;
+  const [subject, setSubject] = useState<SubjectCode>('슬');
+  const [semester, setSemester] = useState<1 | 2 | 0>(currentSemester());
+  const initial = semesterPeriod(cls.schoolYear, currentSemester());
+  const [from, setFrom] = useState(initial.from);
+  const [to, setTo] = useState(initial.to);
+  const [rows, setRows] = useState<StudentRow[] | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [settings, setSettings] = useState<EvalSettings | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const periodOk = from !== '' && to !== '' && from <= to;
+
+  const reload = useCallback(async () => {
+    if (!periodOk) return;
+    try {
+      setRows(await evalApi.status(cls.id, subject, from, to));
+      setError(null);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }, [cls.id, subject, from, to, periodOk]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+  useEffect(() => {
+    evalApi.settingsGet().then(setSettings, (e) => setError(errorText(e)));
+  }, []);
+
+  const pickSemester = (s: 1 | 2) => {
+    const p = semesterPeriod(cls.schoolYear, s);
+    setSemester(s);
+    setFrom(p.from);
+    setTo(p.to);
+  };
+
+  const exportAll = async () => {
+    setInfo(null);
+    setError(null);
+    try {
+      const path = await save({
+        title: '학급 평어 내보내기',
+        defaultPath: `평어-${cls.schoolYear}-${cls.name}.txt`,
+        filters: [{ name: '텍스트 파일', extensions: ['txt'] }],
+      });
+      if (!path) return;
+      const n = await evalApi.exportTxt(cls.id, from, to, path);
+      setInfo(`확정된 평어 ${n}건을 저장했습니다: ${path}`);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+
+  const confirmedCount = useMemo(() => (rows ?? []).filter((r) => r.status === 'confirmed').length, [rows]);
+  const student = rows?.find((r) => r.studentId === selected) ?? null;
+
+  return (
+    <main className="rec">
+      <div className="rec-row rec-wrap">
+        <h2 className="rec-grow">평어 (생활기록부 초안)</h2>
+        {classes.length > 1 && (
+          <label className="rec-field">
+            학급
+            <select
+              value={cls.id}
+              onChange={(e) => {
+                setSelected(null);
+                ctx.selectClass(e.target.value);
+              }}
+            >
+              {classes.map((c: ClassInfo) => (
+                <option key={c.id} value={c.id}>
+                  {c.schoolYear}학년도 {c.grade}학년 {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <button className="diag-secondary" onClick={() => setManaging((m) => !m)}>
+          학급 관리
+        </button>
+      </div>
+      {managing && (
+        <ClassManager
+          classes={classes}
+          onChanged={async () => {
+            await ctx.reloadClasses();
+            await reload();
+          }}
+          onClose={() => setManaging(false)}
+        />
+      )}
+
+      <p className="ev-notice" role="note">
+        초안입니다. 교사의 관찰과 판단으로 고쳐 주세요. 모든 문장은 기록(근거)을 바탕으로 하며, 확정해야 복사·내보내기를 할 수 있습니다.
+      </p>
+      {error && <p className="diag-error">{error}</p>}
+      {info && (
+        <p className="rec-toast" role="status">
+          {info}
+        </p>
+      )}
+
+      <div className="rec-row rec-wrap ev-controls">
+        <div className="rec-chips" role="group" aria-label="교과 선택">
+          {SUBJECT_LIST.map((s) => (
+            <button
+              key={s.code}
+              className={subject === s.code ? 'rec-chip on' : 'rec-chip'}
+              aria-pressed={subject === s.code}
+              onClick={() => {
+                setSubject(s.code);
+                setSelected(null);
+              }}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+        <div className="rec-chips" role="group" aria-label="학기 선택">
+          {([1, 2] as const).map((s) => (
+            <button key={s} className={semester === s ? 'rec-chip on' : 'rec-chip'} aria-pressed={semester === s} onClick={() => pickSemester(s)}>
+              {s}학기
+            </button>
+          ))}
+        </div>
+        <label className="rec-field">
+          시작일
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => {
+              setSemester(0);
+              setFrom(e.target.value);
+            }}
+          />
+        </label>
+        <label className="rec-field">
+          끝일
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => {
+              setSemester(0);
+              setTo(e.target.value);
+            }}
+          />
+        </label>
+        <button className="diag-secondary" onClick={() => setShowSettings((v) => !v)} aria-expanded={showSettings}>
+          문체·금지 표현 설정
+        </button>
+        <button className="diag-secondary" onClick={exportAll} disabled={!periodOk}>
+          학급 확정본 내보내기 (.txt)
+        </button>
+      </div>
+      {!periodOk && <p className="diag-error">기간을 올바르게 정해 주세요(시작일이 끝일보다 늦을 수 없습니다).</p>}
+
+      {showSettings && settings && <SettingsPanel settings={settings} onSaved={(s) => { setSettings(s); setInfo('설정을 저장했습니다'); }} onError={(m) => setError(m)} />}
+
+      <div className="rec-portfolio ev-layout">
+        <aside className="rec-sidebar" aria-label="학생 목록">
+          {rows === null && <p className="diag-note">불러오는 중…</p>}
+          {rows?.map((r) => (
+            <button key={r.studentId} className={selected === r.studentId ? 'rec-side active' : 'rec-side'} onClick={() => setSelected(r.studentId)}>
+              <span className="rec-chip-num">{r.number}</span>
+              <span className="rec-grow">{r.name}</span>
+              <span className="rec-count" title="근거 개수">
+                근거 {r.evidenceCount}
+              </span>
+              <span className={`ev-status ev-status-${r.status}`}>{STATUS_LABEL[r.status]}</span>
+            </button>
+          ))}
+          {rows && rows.length > 0 && <p className="diag-hint">확정 {confirmedCount}/{rows.length}명 (이 교과)</p>}
+        </aside>
+        <div className="rec-main">
+          {student && settings && periodOk ? (
+            <StudentDraft
+              key={`${student.studentId}|${subject}|${from}|${to}`}
+              studentId={student.studentId}
+              subject={subject}
+              from={from}
+              to={to}
+              settings={settings}
+              onChanged={reload}
+            />
+          ) : (
+            <p className="diag-note">왼쪽에서 학생을 고르면 이 교과의 근거 기록과 평어 초안을 볼 수 있어요.</p>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function SettingsPanel({ settings, onSaved, onError }: { settings: EvalSettings; onSaved: (s: EvalSettings) => void; onError: (m: string) => void }) {
+  const [style, setStyle] = useState<EvalStyle>(settings.style);
+  const [target, setTarget] = useState(String(settings.targetChars));
+  const [extra, setExtra] = useState(settings.extraForbidden.join('\n'));
+  const run = async () => {
+    try {
+      const saved = await evalApi.settingsSet({
+        style,
+        targetChars: Number(target),
+        extraForbidden: extra.split('\n').map((w) => w.trim()).filter(Boolean),
+      });
+      onSaved(saved);
+    } catch (e) {
+      onError(errorText(e));
+    }
+  };
+  return (
+    <section className="diag-section ev-settings" aria-label="평어 설정">
+      <h3>문장 끝 문체</h3>
+      <div className="rec-chips" role="group" aria-label="문체">
+        {(Object.keys(STYLE_LABEL) as EvalStyle[]).map((s) => (
+          <button key={s} className={style === s ? 'rec-chip on' : 'rec-chip'} aria-pressed={style === s} onClick={() => setStyle(s)}>
+            {STYLE_LABEL[s]}
+          </button>
+        ))}
+      </div>
+      <label className="rec-field">
+        교과별 목표 글자 수 ({LEN_MIN}~{LEN_MAX})
+        <input type="number" min={LEN_MIN} max={LEN_MAX} step={10} value={target} onChange={(e) => setTarget(e.target.value)} />
+      </label>
+      <label className="rec-field">
+        금지 표현 더하기 (한 줄에 낱말 하나)
+        <textarea className="rec-textarea" rows={4} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="예: 학교 기재요령에서 금지하는 낱말" />
+      </label>
+      <p className="diag-hint">
+        기본 금지 표현(서열·사교육·가족 직업과 경제·낙인)은 시작용 목록입니다. 학교 기재요령에 맞춰 위에서 낱말을 더하세요. 문체와 글자 수는 다음에 초안을 만들 때부터 적용됩니다.
+      </p>
+      <button className="diag-primary" onClick={run}>
+        설정 저장
+      </button>
+    </section>
+  );
+}

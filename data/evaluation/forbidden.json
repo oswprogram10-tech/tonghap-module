@@ -1,0 +1,341 @@
+{
+  "$schema": "./schema/forbidden.schema.json",
+  "dataVersion": "0.1.0",
+  "note": "시작용 목록입니다. 학교 기재요령에 맞춰 교사가 검토하고 고치세요. 앱 안에서는 평어 화면의 「금지 표현 더하기」로 낱말을 더할 수 있습니다.",
+  "categories": {
+    "ranking": "서열·비교 표현",
+    "outside": "사교육·외부 기관 표현",
+    "family": "가족 직업·경제 표현",
+    "stigma": "낙인 표현",
+    "personal": "종교·개인 신상"
+  },
+  "entries": [
+    {
+      "id": "ranking-1",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "가장",
+      "except": [
+        "가장자리"
+      ]
+    },
+    {
+      "id": "ranking-2",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "제일"
+    },
+    {
+      "id": "ranking-3",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "최고"
+    },
+    {
+      "id": "ranking-4",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "최우수"
+    },
+    {
+      "id": "ranking-5",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "1등"
+    },
+    {
+      "id": "ranking-6",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "일등"
+    },
+    {
+      "id": "ranking-7",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "꼴찌"
+    },
+    {
+      "id": "ranking-8",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "뛰어나게"
+    },
+    {
+      "id": "ranking-9",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "탁월"
+    },
+    {
+      "id": "ranking-10",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "상위권"
+    },
+    {
+      "id": "ranking-11",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "순위"
+    },
+    {
+      "id": "ranking-12",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "등수"
+    },
+    {
+      "id": "ranking-13",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "우수한"
+    },
+    {
+      "id": "ranking-14",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "만점"
+    },
+    {
+      "id": "ranking-15",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "누구보다"
+    },
+    {
+      "id": "ranking-16",
+      "category": "ranking",
+      "kind": "word",
+      "pattern": "또래보다"
+    },
+    {
+      "id": "ranking-17",
+      "category": "ranking",
+      "kind": "regex",
+      "pattern": "\\d+\\s*점"
+    },
+    {
+      "id": "ranking-18",
+      "category": "ranking",
+      "kind": "regex",
+      "pattern": "상위\\s*\\d+\\s*%"
+    },
+    {
+      "id": "ranking-19",
+      "category": "ranking",
+      "kind": "regex",
+      "pattern": "[A-Da-d]\\s*등급"
+    },
+    {
+      "id": "outside-20",
+      "category": "outside",
+      "kind": "regex",
+      "pattern": "(교외|외부)\\s*(대회|수상|상장)"
+    },
+    {
+      "id": "outside-21",
+      "category": "outside",
+      "kind": "word",
+      "pattern": "자격증"
+    },
+    {
+      "id": "outside-22",
+      "category": "outside",
+      "kind": "word",
+      "pattern": "학원"
+    },
+    {
+      "id": "outside-23",
+      "category": "outside",
+      "kind": "word",
+      "pattern": "과외"
+    },
+    {
+      "id": "outside-24",
+      "category": "outside",
+      "kind": "word",
+      "pattern": "학습지"
+    },
+    {
+      "id": "outside-25",
+      "category": "outside",
+      "kind": "word",
+      "pattern": "사교육"
+    },
+    {
+      "id": "outside-26",
+      "category": "outside",
+      "kind": "word",
+      "pattern": "선행학습"
+    },
+    {
+      "id": "outside-27",
+      "category": "outside",
+      "kind": "word",
+      "pattern": "개인 교습"
+    },
+    {
+      "id": "outside-28",
+      "category": "outside",
+      "kind": "word",
+      "pattern": "구몬"
+    },
+    {
+      "id": "family-29",
+      "category": "family",
+      "kind": "word",
+      "pattern": "맞벌이"
+    },
+    {
+      "id": "family-30",
+      "category": "family",
+      "kind": "word",
+      "pattern": "한부모"
+    },
+    {
+      "id": "family-31",
+      "category": "family",
+      "kind": "word",
+      "pattern": "기초수급"
+    },
+    {
+      "id": "family-32",
+      "category": "family",
+      "kind": "word",
+      "pattern": "수급자"
+    },
+    {
+      "id": "family-33",
+      "category": "family",
+      "kind": "word",
+      "pattern": "차상위"
+    },
+    {
+      "id": "family-34",
+      "category": "family",
+      "kind": "word",
+      "pattern": "부유"
+    },
+    {
+      "id": "family-35",
+      "category": "family",
+      "kind": "word",
+      "pattern": "가난"
+    },
+    {
+      "id": "family-36",
+      "category": "family",
+      "kind": "word",
+      "pattern": "형편"
+    },
+    {
+      "id": "family-37",
+      "category": "family",
+      "kind": "word",
+      "pattern": "이혼"
+    },
+    {
+      "id": "family-38",
+      "category": "family",
+      "kind": "word",
+      "pattern": "다문화"
+    },
+    {
+      "id": "family-39",
+      "category": "family",
+      "kind": "regex",
+      "pattern": "(아버지|어머니|아빠|엄마|부모님|부모)[^.]{0,8}(직업|회사|사업|직장|의사|변호사|교수)"
+    },
+    {
+      "id": "stigma-40",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "산만"
+    },
+    {
+      "id": "stigma-41",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "문제아"
+    },
+    {
+      "id": "stigma-42",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "문제 행동"
+    },
+    {
+      "id": "stigma-43",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "부진"
+    },
+    {
+      "id": "stigma-44",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "게으"
+    },
+    {
+      "id": "stigma-45",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "이기적"
+    },
+    {
+      "id": "stigma-46",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "폭력적"
+    },
+    {
+      "id": "stigma-47",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "공격적"
+    },
+    {
+      "id": "stigma-48",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "지능",
+      "except": [
+        "인공지능"
+      ]
+    },
+    {
+      "id": "stigma-49",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "ADHD"
+    },
+    {
+      "id": "stigma-50",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "자폐"
+    },
+    {
+      "id": "stigma-51",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "장애",
+      "except": [
+        "장애물"
+      ]
+    },
+    {
+      "id": "stigma-52",
+      "category": "stigma",
+      "kind": "word",
+      "pattern": "거짓말쟁이"
+    },
+    {
+      "id": "personal-53",
+      "category": "personal",
+      "kind": "word",
+      "pattern": "종교"
+    }
+  ]
+}

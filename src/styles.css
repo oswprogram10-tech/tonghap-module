@@ -1856,3 +1856,175 @@ button {
   color: #888;
   font-size: 20px;
 }
+
+/* 평어 초안 */
+.ev-notice {
+  margin: 8px 0 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-weight: 700;
+}
+
+.ev-controls {
+  align-items: flex-end;
+}
+
+.ev-layout {
+  grid-template-columns: 300px 1fr;
+}
+
+.ev-status {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--line);
+  color: var(--muted);
+}
+
+.ev-status-draft {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.ev-status-confirmed {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.ev-title {
+  display: flex;
+  align-items: center;
+  margin: 0 0 8px;
+}
+
+.ev-toast {
+  position: static;
+}
+
+.ev-cols {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) minmax(360px, 3fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.ev-evidence h4,
+.ev-draft h4 {
+  margin: 8px 0;
+  font-size: 18px;
+}
+
+.ev-ev {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ev-more {
+  align-self: flex-start;
+}
+
+.ev-detail {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bg);
+  font-size: 16px;
+}
+
+.ev-detail p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.ev-quote-text {
+  white-space: pre-wrap;
+}
+
+.ev-ask {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--warn-text);
+  font-weight: 700;
+}
+
+.ev-sentences {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ev-sentence {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ev-chips {
+  align-items: center;
+}
+
+.ev-chip {
+  font-weight: 400;
+  font-size: 15px;
+  background: var(--accent-soft);
+}
+
+.ev-chip-bad {
+  background: #fde7e2;
+  border-color: #a1260d;
+}
+
+.ev-warns {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ev-warn {
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.ev-warn-noEvidence,
+.ev-warn-otherName {
+  background: #fde7e2;
+  color: #a1260d;
+}
+
+.ev-length {
+  margin: 8px 0;
+  color: var(--muted);
+}
+
+.ev-length.ev-warn {
+  display: block;
+}
+
+.ev-actions {
+  margin-top: 12px;
+}
+
+.ev-settings {
+  max-width: 720px;
+}
+
+.ev-settings .rec-field {
+  margin: 12px 0;
+}

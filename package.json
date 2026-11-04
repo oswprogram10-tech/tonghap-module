@@ -1,13 +1,13 @@
 {
   "name": "tonghap-module",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "validate:data": "node scripts/validate-curriculum.mjs && node scripts/validate-plays.mjs",
+    "validate:data": "node scripts/validate-curriculum.mjs && node scripts/validate-plays.mjs && node scripts/validate-evaluation.mjs",
     "tauri": "tauri",
     "fetch:engines": "node scripts/fetch-engines.mjs",
     "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test src/board/random.test.mjs src/stt/wav.test.mjs"
