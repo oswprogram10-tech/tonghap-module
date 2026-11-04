@@ -1,6 +1,6 @@
 // 점검 도구가 쓰는 llama.cpp·whisper.cpp 윈도우 실행 파일을 내려받아
 // src-tauri/resources/engines/{llama,whisper}/ 에 넣는다. 버전은 src-tauri/engines.json에 고정.
-// 실행 파일 하나(main)와 같은 폴더의 DLL만 남겨 설치 파일 크기를 줄인다.
+// keep에 적은 실행 파일과 같은 폴더의 DLL만 남겨 설치 파일 크기를 줄인다.
 // 사용법: node scripts/fetch-engines.mjs   (윈도우 전용. GITHUB_TOKEN이 있으면 API 요청에 사용)
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -74,14 +74,17 @@ for (const [name, spec] of Object.entries(config)) {
   // 윈도우 10 이상에 기본 포함된 tar(bsdtar)는 zip을 풀 수 있다.
   execFileSync('tar', ['-xf', zipPath, '-C', extractDir], { stdio: 'inherit' });
 
-  const main = findFile(extractDir, spec.main);
-  if (!main) throw new Error(`${asset.name} 안에 ${spec.main}이 없음`);
-  const srcDir = dirname(main);
+  const found = spec.keep.map((file) => [file, findFile(extractDir, file)]);
+  const missing = found.filter(([, p]) => !p).map(([f]) => f);
+  if (missing.length > 0) throw new Error(`${asset.name} 안에 ${missing.join(', ')}이 없음`);
+  const srcDir = dirname(found[0][1]);
+  const keepNames = spec.keep.map((f) => f.toLowerCase());
+  for (const [file, p] of found) if (dirname(p) !== srcDir) throw new Error(`${file}이 ${spec.keep[0]}과 다른 폴더에 있음`);
   const dest = join(outRoot, name);
   mkdirSync(dest, { recursive: true });
   const kept = [];
   for (const entry of readdirSync(srcDir)) {
-    if (entry.toLowerCase() === spec.main.toLowerCase() || entry.toLowerCase().endsWith('.dll')) {
+    if (keepNames.includes(entry.toLowerCase()) || entry.toLowerCase().endsWith('.dll')) {
       copyFileSync(join(srcDir, entry), join(dest, entry));
       kept.push(entry);
     }
@@ -93,5 +96,7 @@ for (const [name, spec] of Object.entries(config)) {
 }
 
 writeFileSync(join(outRoot, 'VERSIONS.json'), JSON.stringify(versions, null, 2) + '\n');
-if (!existsSync(join(outRoot, 'llama', config.llama.main))) throw new Error('llama-bench 없음');
+for (const [name, spec] of Object.entries(config)) {
+  for (const file of spec.keep) if (!existsSync(join(outRoot, name, file))) throw new Error(`${name}/${file} 없음`);
+}
 console.log('엔진 준비 완료');

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "평어 언어 모델 프롬프트",
+  "description": "로컬 언어 모델 평어 생성기의 프롬프트와 예시. 코드에는 한국어 프롬프트를 두지 않고 이 파일에 둔다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dataVersion", "system", "user", "examples"],
+  "$defs": {
+    "sentence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "evidence"],
+      "properties": {
+        "text": { "type": "string", "minLength": 15, "maxLength": 140 },
+        "evidence": { "type": "array", "minItems": 1, "maxItems": 3, "items": { "type": "string", "minLength": 3 } }
+      }
+    },
+    "sentences": { "type": "array", "minItems": 2, "maxItems": 4, "items": { "$ref": "#/$defs/sentence" } },
+    "evidence": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "enum": ["observation", "habit", "session"] },
+        "id": { "type": "string", "pattern": "^[ohs]:[A-Za-z0-9_-]+$" }
+      }
+    }
+  },
+  "properties": {
+    "$schema": { "type": "string" },
+    "dataVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "note": { "type": "string" },
+    "system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "headings", "rules", "styles", "subjects", "length", "output"],
+      "properties": {
+        "role": { "type": "string", "minLength": 10 },
+        "headings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rules", "style", "subject", "length", "standards", "output"],
+          "properties": {
+            "rules": { "type": "string", "minLength": 1 },
+            "style": { "type": "string", "minLength": 1 },
+            "subject": { "type": "string", "minLength": 1 },
+            "length": { "type": "string", "minLength": 1 },
+            "standards": { "type": "string", "minLength": 1 },
+            "output": { "type": "string", "minLength": 1 }
+          }
+        },
+        "rules": { "type": "array", "minItems": 4, "maxItems": 14, "items": { "type": "string", "minLength": 5 } },
+        "styles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ham", "eum", "boim"],
+          "properties": { "ham": { "type": "string" }, "eum": { "type": "string" }, "boim": { "type": "string" } }
+        },
+        "subjects": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["바", "슬", "즐"],
+          "properties": { "바": { "type": "string" }, "슬": { "type": "string" }, "즐": { "type": "string" } }
+        },
+        "length": { "type": "string", "description": "{target}, {min}, {max}가 들어 있어야 한다" },
+        "output": { "type": "string" }
+      }
+    },
+    "user": { "type": "string", "description": "{bundle}이 들어 있어야 한다" },
+    "examples": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "bundle", "outputs"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "note": { "type": "string" },
+          "bundle": {
+            "type": "object",
+            "required": ["student", "subject", "period", "evidence", "standardsText"],
+            "properties": {
+              "student": { "type": "object", "required": ["alias"], "properties": { "alias": { "const": "학생" } } },
+              "subject": { "enum": ["바", "슬", "즐"] },
+              "period": { "type": "object", "required": ["from", "to"] },
+              "evidence": { "type": "array", "minItems": 3, "maxItems": 12, "items": { "$ref": "#/$defs/evidence" } },
+              "standardsText": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ham", "eum", "boim"],
+            "properties": {
+              "ham": { "$ref": "#/$defs/sentences" },
+              "eum": { "$ref": "#/$defs/sentences" },
+              "boim": { "$ref": "#/$defs/sentences" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

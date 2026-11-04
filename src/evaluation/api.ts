@@ -90,6 +90,35 @@ export interface EvalSettings {
   extraForbidden: string[];
 }
 
+export interface LlmStatus {
+  modelId: string;
+  modelLabel: string;
+  modelReady: boolean;
+  engineReady: boolean;
+  running: boolean;
+}
+
+export interface LlmDraftResult {
+  view: DraftView;
+  /** `llm:<모델 id>` 또는 `template` */
+  generator: string;
+  fellBack: boolean;
+  notice: string | null;
+  detail: string | null;
+}
+
+/** 초안을 만드는 방식. */
+export type GeneratorChoice = 'template' | 'llm';
+
+/** 저장된 초안의 `generator` 값을 화면 문구로. */
+export function generatorLabel(g: string): string {
+  if (g.startsWith('llm:')) return '언어 모델';
+  if (g === 'manual') return '직접 고침';
+  return '템플릿';
+}
+
+export const CANCELLED_TEXT = '초안 만들기를 취소했습니다';
+
 export interface DraftKey {
   studentId: string;
   subject: SubjectCode;
@@ -103,6 +132,9 @@ export const evalApi = {
   status: (classId: string, subject: SubjectCode, from: string, to: string) => invoke<StudentRow[]>('eval_status', { classId, subject, from, to }),
   view: (key: DraftKey) => invoke<DraftView>('eval_view', { key }),
   generate: (key: DraftKey, excludedIds: string[]) => invoke<DraftView>('eval_generate', { input: { ...key, excludedIds } }),
+  llmStatus: () => invoke<LlmStatus>('eval_llm_status'),
+  generateLlm: (key: DraftKey, excludedIds: string[]) => invoke<LlmDraftResult>('eval_generate_llm', { input: { ...key, excludedIds } }),
+  llmCancel: () => invoke<void>('eval_llm_cancel'),
   save: (key: DraftKey, sentences: Sentence[]) => invoke<DraftView>('eval_save', { input: { ...key, sentences } }),
   check: (key: DraftKey, sentences: Sentence[]) => invoke<DraftCheck>('eval_check', { input: { ...key, sentences } }),
   confirm: (key: DraftKey) => invoke<DraftView>('eval_confirm', { key }),

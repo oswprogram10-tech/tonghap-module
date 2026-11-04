@@ -8,6 +8,7 @@ pub mod bundle;
 pub mod check;
 pub mod data;
 pub mod generate;
+pub mod llm;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

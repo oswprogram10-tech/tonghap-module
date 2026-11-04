@@ -18,6 +18,7 @@ const SAMPLE_SECONDS: f64 = 11.0;
 #[serde(rename_all = "camelCase")]
 pub struct EngineInfo {
     pub llama_bench: bool,
+    pub llama_server: bool,
     pub whisper_cli: bool,
     /// fetch-engines가 남긴 버전 정보(VERSIONS.json)
     pub versions: Option<serde_json::Value>,
@@ -28,6 +29,7 @@ pub fn diag_engines(app: AppHandle) -> DiagResult<EngineInfo> {
     let root = resources(&app)?.join("engines");
     Ok(EngineInfo {
         llama_bench: root.join("llama").join(exe("llama-bench")).exists(),
+        llama_server: root.join("llama").join(exe("llama-server")).exists(),
         whisper_cli: root.join("whisper").join(exe("whisper-cli")).exists(),
         versions: std::fs::read_to_string(root.join("VERSIONS.json"))
             .ok()

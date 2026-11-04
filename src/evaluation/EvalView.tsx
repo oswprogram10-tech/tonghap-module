@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
 import { errorText, type ClassInfo } from '../records/api';
 import ClassManager from '../records/ClassManager';
 import { RecordsGate, type RecordsCtx } from '../records/useRecords';
 import {
+  CANCELLED_TEXT,
   LEN_MAX,
   LEN_MIN,
+  MIN_EVIDENCE,
   STYLE_LABEL,
   SUBJECT_LIST,
   currentSemester,
@@ -13,12 +15,26 @@ import {
   semesterPeriod,
   type EvalSettings,
   type EvalStyle,
+  type GeneratorChoice,
+  type LlmStatus,
   type StudentRow,
   type SubjectCode,
 } from './api';
 import StudentDraft from './StudentDraft';
 
 const STATUS_LABEL = { none: '없음', draft: '초안', confirmed: '확정' } as const;
+
+interface Batch {
+  running: boolean;
+  total: number;
+  done: number;
+  current: string;
+  /** 취소해서 멈췄는가 */
+  cancelled: boolean;
+  failures: { name: string; reason: string }[];
+  /** 언어 모델 초안을 만들지 못해 템플릿으로 대신한 학생 */
+  fallbacks: string[];
+}
 
 export default function EvalView() {
   return <RecordsGate what="평어 초안">{(ctx) => <EvalPanel key={ctx.cls.id} ctx={ctx} />}</RecordsGate>;
@@ -36,6 +52,12 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
   const [settings, setSettings] = useState<EvalSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [managing, setManaging] = useState(false);
+  const [llm, setLlm] = useState<LlmStatus | null>(null);
+  const [choice, setChoice] = useState<GeneratorChoice | null>(null);
+  const [batch, setBatch] = useState<Batch | null>(null);
+  const [rev, setRev] = useState(0);
+  const stopBatch = useRef(false);
+  const batchRunning = useRef(false);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +77,22 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
   }, [reload]);
   useEffect(() => {
     evalApi.settingsGet().then(setSettings, (e) => setError(errorText(e)));
+    evalApi.llmStatus().then(setLlm, () => setLlm(null));
   }, []);
+  // 탭을 떠나면 일괄 생성을 멈춘다.
+  useEffect(
+    () => () => {
+      if (stopBatch.current === false && batchRunning.current) {
+        stopBatch.current = true;
+        void evalApi.llmCancel().catch(() => undefined);
+      }
+    },
+    [],
+  );
+
+  const llmReady = !!llm && llm.modelReady && llm.engineReady;
+  const generator: GeneratorChoice = choice ?? (llmReady ? 'llm' : 'template');
+  const running = batch?.running ?? false;
 
   const pickSemester = (s: 1 | 2) => {
     const p = semesterPeriod(cls.schoolYear, s);
@@ -79,6 +116,51 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
     } catch (e) {
       setError(errorText(e));
     }
+  };
+
+  const batchTargets = useMemo(() => (rows ?? []).filter((r) => r.status === 'none' && r.evidenceCount >= MIN_EVIDENCE), [rows]);
+
+  /** 아직 초안이 없는 학생만, 하나씩 순서대로 만든다. */
+  const runBatch = async () => {
+    const targets = batchTargets;
+    if (targets.length === 0 || running) return;
+    const method = generator;
+    stopBatch.current = false;
+    batchRunning.current = true;
+    setInfo(null);
+    setError(null);
+    const state: Batch = { running: true, total: targets.length, done: 0, current: targets[0].name, cancelled: false, failures: [], fallbacks: [] };
+    setBatch({ ...state });
+    for (const t of targets) {
+      if (stopBatch.current) break;
+      setBatch({ ...state, current: `${t.number}번 ${t.name}` });
+      const key = { studentId: t.studentId, subject, from, to };
+      try {
+        if (method === 'llm') {
+          const r = await evalApi.generateLlm(key, []);
+          if (r.fellBack) state.fallbacks.push(`${t.number}번 ${t.name}`);
+        } else {
+          await evalApi.generate(key, []);
+        }
+      } catch (e) {
+        const msg = errorText(e);
+        if (msg === CANCELLED_TEXT || stopBatch.current) break;
+        state.failures.push({ name: `${t.number}번 ${t.name}`, reason: msg });
+      }
+      state.done += 1;
+      setBatch({ ...state });
+      void reload();
+    }
+    state.cancelled = stopBatch.current;
+    batchRunning.current = false;
+    setBatch({ ...state, running: false, cancelled: state.cancelled });
+    setRev((n) => n + 1);
+    await reload();
+  };
+
+  const cancelBatch = () => {
+    stopBatch.current = true;
+    if (generator === 'llm') void evalApi.llmCancel().catch(() => undefined);
   };
 
   const confirmedCount = useMemo(() => (rows ?? []).filter((r) => r.status === 'confirmed').length, [rows]);
@@ -138,6 +220,7 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
               key={s.code}
               className={subject === s.code ? 'rec-chip on' : 'rec-chip'}
               aria-pressed={subject === s.code}
+              disabled={running}
               onClick={() => {
                 setSubject(s.code);
                 setSelected(null);
@@ -149,7 +232,7 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
         </div>
         <div className="rec-chips" role="group" aria-label="학기 선택">
           {([1, 2] as const).map((s) => (
-            <button key={s} className={semester === s ? 'rec-chip on' : 'rec-chip'} aria-pressed={semester === s} onClick={() => pickSemester(s)}>
+            <button key={s} className={semester === s ? 'rec-chip on' : 'rec-chip'} aria-pressed={semester === s} disabled={running} onClick={() => pickSemester(s)}>
               {s}학기
             </button>
           ))}
@@ -158,6 +241,7 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
           시작일
           <input
             type="date"
+            disabled={running}
             value={from}
             onChange={(e) => {
               setSemester(0);
@@ -169,6 +253,7 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
           끝일
           <input
             type="date"
+            disabled={running}
             value={to}
             onChange={(e) => {
               setSemester(0);
@@ -183,6 +268,33 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
           학급 확정본 내보내기 (.txt)
         </button>
       </div>
+      <div className="rec-row rec-wrap ev-controls" aria-label="초안 만드는 방식">
+        <div className="rec-chips" role="group" aria-label="초안 만드는 방식">
+          <button className={generator === 'template' ? 'rec-chip on' : 'rec-chip'} aria-pressed={generator === 'template'} disabled={running} onClick={() => setChoice('template')}>
+            템플릿
+          </button>
+          <button
+            className={generator === 'llm' ? 'rec-chip on' : 'rec-chip'}
+            aria-pressed={generator === 'llm'}
+            disabled={running || !llmReady}
+            title={llmReady ? '' : '기기 점검 탭에서 평어 초안 모델을 준비하면 쓸 수 있어요'}
+            onClick={() => setChoice('llm')}
+          >
+            언어 모델
+          </button>
+        </div>
+        <span className="diag-hint ev-gen-hint">
+          {llmReady
+            ? generator === 'llm'
+              ? '이 PC 안의 언어 모델로 만듭니다. 학생 1명에 30초~1분쯤 걸려요.'
+              : '문장 틀로 바로 만듭니다.'
+            : '언어 모델은 「기기 점검」 탭에서 평어 초안 모델을 준비하면 쓸 수 있어요. 지금은 템플릿만 쓸 수 있습니다.'}
+        </span>
+        <button className="diag-secondary" onClick={runBatch} disabled={running || !periodOk || batchTargets.length === 0}>
+          학급 초안 한꺼번에 만들기 ({batchTargets.length}명)
+        </button>
+      </div>
+      {batch && <BatchPanel batch={batch} onCancel={cancelBatch} onClose={() => setBatch(null)} />}
       {!periodOk && <p className="diag-error">기간을 올바르게 정해 주세요(시작일이 끝일보다 늦을 수 없습니다).</p>}
 
       {showSettings && settings && <SettingsPanel settings={settings} onSaved={(s) => { setSettings(s); setInfo('설정을 저장했습니다'); }} onError={(m) => setError(m)} />}
@@ -205,12 +317,14 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
         <div className="rec-main">
           {student && settings && periodOk ? (
             <StudentDraft
-              key={`${student.studentId}|${subject}|${from}|${to}`}
+              key={`${student.studentId}|${subject}|${from}|${to}|${rev}`}
               studentId={student.studentId}
               subject={subject}
               from={from}
               to={to}
               settings={settings}
+              generator={generator}
+              locked={running}
               onChanged={reload}
             />
           ) : (
@@ -219,6 +333,52 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
         </div>
       </div>
     </main>
+  );
+}
+
+function BatchPanel({ batch, onCancel, onClose }: { batch: Batch; onCancel: () => void; onClose: () => void }) {
+  return (
+    <section className="diag-section ev-batch" aria-label="학급 초안 만들기">
+      {batch.running ? (
+        <>
+          <p role="status">
+            초안 만드는 중… {batch.done}/{batch.total}명 · 지금 {batch.current}
+          </p>
+          <progress max={batch.total} value={batch.done} aria-label="학급 초안 진행" />
+          <p className="diag-hint">하나씩 차례로 만듭니다. 학생 1명에 30초~1분쯤 걸리며, 취소해도 이미 만든 초안은 남습니다.</p>
+          <button className="diag-secondary" onClick={onCancel}>
+            취소
+          </button>
+        </>
+      ) : (
+        <>
+          <p role="status">
+            {batch.cancelled ? '취소했습니다. ' : '끝났습니다. '}
+            {batch.done}/{batch.total}명의 초안을 만들었습니다.
+          </p>
+          {batch.fallbacks.length > 0 && (
+            <p className="ev-fallback" role="alert">
+              언어 모델 초안을 만들지 못해 템플릿 초안으로 대신한 학생: {batch.fallbacks.join(', ')}
+            </p>
+          )}
+          {batch.failures.length > 0 && (
+            <div role="alert">
+              <p className="diag-error">만들지 못한 학생 {batch.failures.length}명</p>
+              <ul className="ev-fail-list">
+                {batch.failures.map((f) => (
+                  <li key={f.name}>
+                    {f.name}: {f.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <button className="diag-secondary" onClick={onClose}>
+            닫기
+          </button>
+        </>
+      )}
+    </section>
   );
 }
 

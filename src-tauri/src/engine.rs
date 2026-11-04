@@ -45,21 +45,26 @@ pub struct RunOutput {
     pub elapsed: Duration,
 }
 
-/// 콘솔 창 없이 실행하고, 시간이 지나면 강제 종료한다.
-pub fn run(program: &Path, args: &[String], timeout: Duration) -> Result<RunOutput, String> {
+/// 콘솔 창 없이 뜨는 명령을 만든다(윈도우의 CREATE_NO_WINDOW). 작업 폴더는 실행 파일 옆.
+pub fn hidden_command(program: &Path, args: &[String]) -> Command {
     let mut cmd = Command::new(program);
     cmd.args(args)
         // DLL·백엔드 모듈을 실행 파일 옆에서 찾도록 작업 폴더를 맞춘다.
         .current_dir(program.parent().unwrap_or(Path::new(".")))
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stdin(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    cmd
+}
+
+/// 콘솔 창 없이 실행하고, 시간이 지나면 강제 종료한다.
+pub fn run(program: &Path, args: &[String], timeout: Duration) -> Result<RunOutput, String> {
+    let mut cmd = hidden_command(program, args);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let started = Instant::now();
     let mut child = cmd.spawn().map_err(|e| format!("실행 실패({}): {e}", program.display()))?;

@@ -4,6 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { STT_MODELS, sttApi, type SttStatus } from '../stt/api';
 import {
+  EVAL_MODEL_IDS,
   diagApi,
   type DownloadProgress,
   type EngineInfo,
@@ -236,7 +237,7 @@ function DiagPanel() {
           받은 파일을 「파일 선택」으로 가져오세요.
         </p>
         <ul className="model-list">
-          {models.filter((m) => !SUBTITLE_IDS.includes(m.id)).map((m) => (
+          {models.filter((m) => !SUBTITLE_IDS.includes(m.id) && !EVAL_MODEL_IDS.includes(m.id)).map((m) => (
             <ModelRow
               key={m.id}
               model={m}
@@ -248,6 +249,28 @@ function DiagPanel() {
             />
           ))}
         </ul>
+      </section>
+
+      <section className="diag-section" aria-label="평어 초안 모델">
+        <h2>평어 초안 모델</h2>
+        <p className="diag-hint">
+          「평어」 탭에서 언어 모델로 초안을 만들 때 씁니다(Qwen3 4B, 약 2.5GB). 이 PC 안에서만 실행되고 아이 기록은 밖으로 나가지 않습니다.
+          학생 1명 초안에 30초~1분쯤 걸립니다. 모델이 없어도 템플릿 초안은 쓸 수 있어요.
+        </p>
+        <ul className="model-list">
+          {models.filter((m) => EVAL_MODEL_IDS.includes(m.id)).map((m) => (
+            <ModelRow
+              key={m.id}
+              model={m}
+              progress={progress[m.id]}
+              error={modelErrors[m.id]}
+              disabled={busyModel || running}
+              onDownload={() => download(m.id)}
+              onImport={() => importFile(m)}
+            />
+          ))}
+        </ul>
+        {engines && !engines.llamaServer && <p className="diag-error">언어 모델 서버(llama-server)가 없습니다.</p>}
       </section>
 
       <section className="diag-section" aria-label="음성 자막">
@@ -378,11 +401,11 @@ function SystemTable({ sys, engines }: { sys: SystemReport; engines: EngineInfo 
     [
       '측정 엔진',
       engines
-        ? `llama-bench ${engines.llamaBench ? '있음' : '없음'} · whisper-cli ${engines.whisperCli ? '있음' : '없음'}${
+        ? `llama-bench ${engines.llamaBench ? '있음' : '없음'} · llama-server ${engines.llamaServer ? '있음' : '없음'} · whisper-cli ${engines.whisperCli ? '있음' : '없음'}${
             engines.versions ? ` (${Object.values(engines.versions).map((v) => v.tag).join(', ')})` : ''
           }`
         : '확인하는 중',
-      engines ? !engines.llamaBench || !engines.whisperCli : false,
+      engines ? !engines.llamaBench || !engines.llamaServer || !engines.whisperCli : false,
     ],
   ];
   return (

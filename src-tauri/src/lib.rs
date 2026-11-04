@@ -2,6 +2,7 @@ mod backup;
 mod db;
 mod diag;
 mod engine;
+mod llm_server;
 mod stt;
 
 use serde::Serialize;
@@ -33,6 +34,7 @@ pub fn run() {
             app.manage(std::sync::Mutex::new(conn));
             app.manage(media);
             stt::start(app.handle())?;
+            llm_server::start(app.handle());
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -107,6 +109,9 @@ pub fn run() {
             db::evaluation::eval_status,
             db::evaluation::eval_view,
             db::evaluation::eval_generate,
+            db::evaluation::llm::eval_llm_status,
+            db::evaluation::llm::eval_llm_cancel,
+            db::evaluation::llm::eval_generate_llm,
             db::evaluation::eval_save,
             db::evaluation::eval_check,
             db::evaluation::eval_confirm,
@@ -118,6 +123,15 @@ pub fn run() {
             backup::backup_restore,
             backup::backup_status,
         ])
-        .run(tauri::generate_context!())
-        .expect("앱 실행 중 오류");
+        .build(tauri::generate_context!())
+        .expect("앱 실행 중 오류")
+        .run(|app, event| {
+            // 앱이 끝나면 언어 모델 서버(llama-server)도 함께 끈다.
+            if let tauri::RunEvent::Exit = event {
+                use tauri::Manager;
+                if let Some(server) = app.try_state::<std::sync::Arc<llm_server::LlmServer>>() {
+                    server.shutdown();
+                }
+            }
+        });
 }

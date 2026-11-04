@@ -47,7 +47,7 @@ const NOTE_MAX_CHARS: usize = 40;
 const QUOTE_MAX_CHARS: usize = 40;
 
 /// 시드 문자열에서 안정적인 숫자를 만든다(FNV-1a; 표준 라이브러리 해시는 버전마다 달라질 수 있다).
-fn hash(parts: &[&str]) -> u64 {
+pub(crate) fn hash(parts: &[&str]) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
     for p in parts {
         for b in p.bytes().chain(std::iter::once(0xff)) {

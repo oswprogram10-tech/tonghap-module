@@ -8,10 +8,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const load = (p) => JSON.parse(readFileSync(resolve(root, p), 'utf8'));
 const templates = load('data/evaluation/templates.json');
 const forbidden = load('data/evaluation/forbidden.json');
+const prompt = load('data/evaluation/prompt.json');
+const curriculum = load('data/curriculum/integrated-2022.json');
 
 const errors = [];
 const ajv = new Ajv2020({ allErrors: true });
-for (const [name, data] of [['templates', templates], ['forbidden', forbidden]]) {
+for (const [name, data] of [['templates', templates], ['forbidden', forbidden], ['prompt', prompt]]) {
   const schema = load(`data/evaluation/schema/${name}.schema.json`);
   if (!ajv.validate(schema, data)) for (const e of ajv.errors) errors.push(`${name} 스키마: ${e.instancePath || '/'} ${e.message}`);
 }
@@ -102,9 +104,55 @@ if (errors.length === 0) {
   }
 }
 
+// 언어 모델 프롬프트: 자리표시자, 예시의 근거 id·성취기준 원문·문체 종결·금지 표현.
+if (errors.length === 0) {
+  for (const k of ['{target}', '{min}', '{max}']) if (!prompt.system.length.includes(k)) errors.push(`prompt.system.length에 ${k} 필요`);
+  if (prompt.user.split('{bundle}').length !== 2) errors.push('prompt.user에 {bundle}이 한 번 있어야 함');
+  const statements = new Map(curriculum.standards.map((s) => [s.code, s.statement]));
+  const topics = new Set(curriculum.topicBooks.map((t) => t.title));
+  const ids = new Set();
+  const compiledF = forbidden.entries.map((f) => [f, f.kind === 'regex' ? new RegExp(f.pattern, 'u') : null]);
+  const subjectsSeen = new Set();
+  for (const ex of prompt.examples) {
+    const where = `예시 ${ex.id}`;
+    if (ids.has(ex.id)) errors.push(`${where}: id 중복`);
+    ids.add(ex.id);
+    subjectsSeen.add(ex.bundle.subject);
+    const evIds = new Set();
+    for (const e of ex.bundle.evidence) {
+      if (evIds.has(e.id)) errors.push(`${where}: 근거 id 중복 ${e.id}`);
+      evIds.add(e.id);
+      if (e.topic && !topics.has(e.topic)) errors.push(`${where}: 알 수 없는 주제책 ${e.topic}`);
+      for (const c of e.standards ?? []) {
+        if (!ex.bundle.standardsText[c]) errors.push(`${where}: ${c}의 원문이 standardsText에 없음`);
+        if (!c.includes(ex.bundle.subject)) errors.push(`${where}: ${c}는 ${ex.bundle.subject} 교과의 성취기준이 아님`);
+      }
+    }
+    for (const [c, text] of Object.entries(ex.bundle.standardsText)) {
+      if (statements.get(c) !== text) errors.push(`${where}: ${c} 원문이 교육과정 데이터와 다름`);
+    }
+    for (const [style, sentences] of Object.entries(ex.outputs)) {
+      const end = prompt.system.styles[style].match(/'~([^']+?)\.'/)?.[1];
+      for (const [i, s] of sentences.entries()) {
+        const at = `${where} ${style} ${i + 1}번째 문장`;
+        if (end && !s.text.endsWith(`${end}.`)) errors.push(`${at}: '~${end}.'로 끝나야 함`);
+        if (/<think>|학생/.test(s.text)) errors.push(`${at}: '학생'·<think>는 쓸 수 없음`);
+        for (const id of s.evidence) if (!evIds.has(id)) errors.push(`${at}: 예시 묶음에 없는 근거 id ${id}`);
+        for (const [f, re] of compiledF) {
+          const stripped = (f.except ?? []).reduce((acc, x) => acc.split(x).join(' '), s.text);
+          if (re ? re.test(stripped) : stripped.includes(f.pattern)) errors.push(`${at}: 금지 표현 ${f.id}(${f.pattern})`);
+        }
+      }
+      const total = sentences.reduce((n, s) => n + s.text.length, 0) + sentences.length - 1;
+      if (total < 150 || total > 400) errors.push(`${where} ${style}: 전체 ${total}자(150~400자여야 함)`);
+    }
+  }
+  if (subjectsSeen.size < 2) errors.push('예시는 교과 2개 이상을 다뤄야 함');
+}
+
 if (errors.length > 0) {
   console.error(`평어 데이터 검증 실패 (${errors.length}건)`);
   for (const e of errors) console.error(`  - ${e}`);
   process.exit(1);
 }
-console.log(`평어 데이터 검증 통과: 템플릿 ${templates.templates.length}개, 금지 표현 ${forbidden.entries.length}개`);
+console.log(`평어 데이터 검증 통과: 템플릿 ${templates.templates.length}개, 금지 표현 ${forbidden.entries.length}개, 프롬프트 예시 ${prompt.examples.length}개`);

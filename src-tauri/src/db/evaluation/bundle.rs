@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;
 
 use rusqlite::{params, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::data::{check_subject, standard_statement, subject_of_code, templates, topic_title};
 use crate::db::reports::{check_period, parse_date, Scrubber};
@@ -20,18 +20,18 @@ const MAX_HABITS: usize = 2;
 const MAX_SESSIONS: usize = 3;
 const QUOTE_CHARS: usize = 80;
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BundleStudent {
     pub alias: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BundlePeriod {
     pub from: String,
     pub to: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Evidence {
     Observation {
@@ -76,7 +76,7 @@ impl Evidence {
     }
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Bundle {
     pub student: BundleStudent,

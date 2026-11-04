@@ -3,14 +3,14 @@
     "repo": "ggml-org/llama.cpp",
     "tag": "b11600",
     "asset": "bin-win-vulkan-x64\\.zip$",
-    "main": "llama-bench.exe",
+    "keep": ["llama-bench.exe", "llama-server.exe"],
     "license": "MIT"
   },
   "whisper": {
     "repo": "ggml-org/whisper.cpp",
     "tag": "v1.9.2",
     "asset": "^whisper-bin-x64\\.zip$",
-    "main": "whisper-cli.exe",
+    "keep": ["whisper-cli.exe"],
     "license": "MIT"
   }
 }

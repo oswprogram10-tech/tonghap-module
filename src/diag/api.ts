@@ -29,9 +29,13 @@ export interface SystemReport {
 
 export interface EngineInfo {
   llamaBench: boolean;
+  llamaServer: boolean;
   whisperCli: boolean;
   versions: Record<string, { repo: string; tag: string; asset: string }> | null;
 }
+
+/** 「평어 초안 모델」 칸에서 따로 보여 주는 모델(측정용 목록에는 넣지 않는다). */
+export const EVAL_MODEL_IDS: string[] = ['qwen3-4b-q4km'];
 
 export interface ModelStatus {
   id: string;

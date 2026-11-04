@@ -76,6 +76,7 @@ data/evaluation/            평어 템플릿·금지 표현(JSON)과 스키마
 scripts/                    데이터 검증 스크립트
 src/                        화면(React + TypeScript). src/records/ 관찰 기록·포트폴리오, src/units/ 단원 빌더, src/board/ 칠판 모드, src/reports/ 학부모 리포트, src/evaluation/ 평어 초안
 src-tauri/                  데스크톱 앱(Rust, Tauri 2)과 설치 파일 설정
+ml/                         평어 모델 미세조정 준비(합성 근거 묶음 생성기, 앱에는 들어가지 않음)
 src-tauri/src/db/           관찰 기록 저장소(SQLite, 첨부 파일)
 src-tauri/src/diag/         기기 점검 기능(사양 조회, 모델 내려받기, 속도 측정)
 src-tauri/resources/        설치 파일에 들어가는 파일(측정용 음성 샘플, 제3자 고지, 내려받은 엔진)

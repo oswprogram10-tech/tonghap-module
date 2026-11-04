@@ -3,16 +3,19 @@ import { errorText } from '../records/api';
 import { shorten } from '../records/util';
 import { standardByCode } from '../records/util';
 import {
+  CANCELLED_TEXT,
   LEN_MAX,
   LEN_MIN,
   MIN_EVIDENCE,
   evalApi,
+  generatorLabel,
   joinSentences,
   type DraftCheck,
   type DraftKey,
   type DraftView,
   type EvalSettings,
   type Evidence,
+  type GeneratorChoice,
   type Sentence,
   type SubjectCode,
 } from './api';
@@ -33,11 +36,15 @@ interface Props {
   from: string;
   to: string;
   settings: EvalSettings;
+  /** 초안을 만드는 방식(템플릿 / 언어 모델). */
+  generator: GeneratorChoice;
+  /** 학급 일괄 생성 중에는 이 학생의 초안을 따로 만들 수 없다. */
+  locked: boolean;
   onChanged: () => void;
 }
 
 /** 한 아이의 근거 목록과 평어 초안 편집·확정 화면. */
-export default function StudentDraft({ studentId, subject, from, to, settings, onChanged }: Props) {
+export default function StudentDraft({ studentId, subject, from, to, settings, generator, locked, onChanged }: Props) {
   const key: DraftKey = useMemo(() => ({ studentId, subject, from, to }), [studentId, subject, from, to]);
   const [view, setView] = useState<DraftView | null>(null);
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -47,7 +54,9 @@ export default function StudentDraft({ studentId, subject, from, to, settings, o
   const [busy, setBusy] = useState(false);
   const [askRegen, setAskRegen] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
   const seq = useRef(0);
 
   const apply = useCallback((v: DraftView) => {
@@ -91,6 +100,7 @@ export default function StudentDraft({ studentId, subject, from, to, settings, o
     setBusy(true);
     setError(null);
     setInfo(null);
+    setNotice(null);
     try {
       await fn();
     } catch (e) {
@@ -107,11 +117,31 @@ export default function StudentDraft({ studentId, subject, from, to, settings, o
   const generate = () =>
     run(async () => {
       setAskRegen(false);
+      if (generator === 'llm') {
+        setGenerating(true);
+        try {
+          const r = await evalApi.generateLlm(key, excluded);
+          apply(r.view);
+          if (r.fellBack) setNotice(r.notice);
+          else setInfo('언어 모델로 초안을 만들었습니다. 문장을 읽고 고쳐 주세요.');
+          onChanged();
+        } catch (e) {
+          if (errorText(e) !== CANCELLED_TEXT) throw e;
+          setInfo('초안 만들기를 취소했습니다. 기존 문장은 그대로입니다.');
+        } finally {
+          setGenerating(false);
+        }
+        return;
+      }
       const v = await evalApi.generate(key, excluded);
       apply(v);
-      setInfo('초안을 만들었습니다. 문장을 읽고 고쳐 주세요.');
+      setInfo('템플릿으로 초안을 만들었습니다. 문장을 읽고 고쳐 주세요.');
       onChanged();
     });
+
+  const cancelGenerate = () => {
+    evalApi.llmCancel().catch((e) => setError(errorText(e)));
+  };
 
   const saveNow = () =>
     run(async () => {
@@ -166,6 +196,11 @@ export default function StudentDraft({ studentId, subject, from, to, settings, o
           {info}
         </p>
       )}
+      {notice && (
+        <p className="ev-fallback" role="alert">
+          {notice}
+        </p>
+      )}
 
       <div className="ev-cols">
         <div className="ev-evidence">
@@ -203,9 +238,18 @@ export default function StudentDraft({ studentId, subject, from, to, settings, o
             </p>
           )}
           <div className="rec-row rec-wrap">
-            <button className="diag-primary" disabled={busy || !enough} onClick={() => (hasDraft ? setAskRegen(true) : generate())}>
-              {hasDraft ? '초안 다시 만들기' : '초안 만들기'}
+            <button className="diag-primary" disabled={busy || locked || !enough} onClick={() => (hasDraft ? setAskRegen(true) : generate())}>
+              {hasDraft ? '초안 다시 만들기' : '초안 만들기'} ({generator === 'llm' ? '언어 모델' : '템플릿'})
             </button>
+            {generating && (
+              <span className="ev-progress" role="status">
+                <progress aria-label="초안 만드는 중" />
+                초안 만드는 중… 학생 1명에 30초~1분 걸려요.
+                <button className="diag-secondary" onClick={cancelGenerate}>
+                  취소
+                </button>
+              </span>
+            )}
             {askRegen && (
               <span className="ev-ask" role="alert">
                 지금 문장이 새 초안으로 바뀝니다. 계속할까요?
@@ -219,6 +263,7 @@ export default function StudentDraft({ studentId, subject, from, to, settings, o
             )}
           </div>
 
+          {view.draft && <p className="diag-hint">만든 방식: {generatorLabel(view.draft.generator)}</p>}
           {sentences.length === 0 && <p className="diag-note">아직 문장이 없습니다. 「초안 만들기」를 누르거나 문장을 직접 추가하세요.</p>}
           <ol className="ev-sentences">
             {sentences.map((s, i) => {

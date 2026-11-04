@@ -37,6 +37,9 @@ pub struct ModelSpec {
     pub license: &'static str,
 }
 
+/// 평어 초안에 쓰는 기본 언어 모델(설정 `evalModelId`로 바꿀 수 있다).
+pub const EVAL_MODEL_DEFAULT: &str = "qwen3-4b-q4km";
+
 pub const MODELS: &[ModelSpec] = &[
     ModelSpec {
         id: "qwen2.5-0.5b-q4km",
@@ -56,6 +59,16 @@ pub const MODELS: &[ModelSpec] = &[
         url: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
         size: 1_117_320_736,
         sha256: "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+        license: "Apache-2.0",
+    },
+    ModelSpec {
+        id: EVAL_MODEL_DEFAULT,
+        label: "평어 초안 · 언어 모델 (Qwen3 4B, Q4_K_M)",
+        kind: ModelKind::Llm,
+        file_name: "Qwen3-4B-Q4_K_M.gguf",
+        url: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+        size: 2_497_280_256,
+        sha256: "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
         license: "Apache-2.0",
     },
     ModelSpec {

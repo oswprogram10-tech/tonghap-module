@@ -818,3 +818,306 @@ fn boim_sentences_never_say_moseup_twice() {
     }
     assert!(n > 300);
 }
+
+// ---------- (2') 언어 모델 생성기 ----------
+
+mod llm_tests {
+    use std::cell::RefCell;
+    use std::sync::atomic::AtomicBool;
+
+    use serde_json::{json, Value};
+
+    use super::*;
+    use crate::db::evaluation::llm::{self, build_request, parse_output, prompt, response_schema, seed_for, system_prompt, FALLBACK_NOTICE};
+    use crate::llm_server::{LlmError, CANCELLED_MESSAGE};
+
+    const MODEL: &str = "qwen3-4b-q4km";
+
+    fn input(cx: &Cx, i: usize, subject: &str) -> GenerateInput {
+        GenerateInput { key: key(cx, i, subject), excluded_ids: vec![] }
+    }
+
+    fn good_output(cx: &Cx) -> String {
+        let b = bundle_of(cx, 0, "슬");
+        let ids: Vec<&str> = b.evidence.iter().map(|e| e.id()).collect();
+        json!({ "sentences": [
+            { "text": "우주 영상을 보고 궁금한 점을 질문하며 주변 세계를 탐색함.", "evidence": [ids[0]] },
+            { "text": "돋보기로 곤충을 자세히 관찰하고 발견한 점을 이야기함.", "evidence": [ids[1]] },
+        ] })
+        .to_string()
+    }
+
+    fn run_with(cx: &Cx, replies: Vec<Result<String, LlmError>>) -> (DbResult<llm::LlmDraftResult>, Vec<Value>) {
+        let seen = RefCell::new(Vec::<Value>::new());
+        let queue = RefCell::new(replies.into_iter());
+        let chat = |req: &Value| -> Result<String, LlmError> {
+            seen.borrow_mut().push(req.clone());
+            queue.borrow_mut().next().unwrap_or_else(|| Err(LlmError::Failed("no more".into())))
+        };
+        let cancel = AtomicBool::new(false);
+        let out = llm::generate_llm_draft(&cx.conn, &cx.media, &input(cx, 0, "슬"), MODEL, &chat, &cancel);
+        (out, seen.into_inner())
+    }
+
+    fn cx_with_inquiry(n: usize) -> Cx {
+        let mut cx = seed();
+        seed_inquiry(&mut cx, n);
+        cx
+    }
+
+    #[test]
+    fn prompt_json_examples_pass_the_automatic_checks_in_every_style() {
+        let p = prompt();
+        assert!((2..=3).contains(&p.examples.len()));
+        for ex in &p.examples {
+            let ids: Vec<&str> = ex.bundle.evidence.iter().map(|e| e.id()).collect();
+            assert!(ex.bundle.evidence.len() >= MIN_EVIDENCE);
+            for (code, text) in &ex.bundle.standards_text {
+                assert_eq!(super::super::data::standard_statement(code).as_deref(), Some(text.as_str()), "{} {code}", ex.id);
+            }
+            for style in ["ham", "eum", "boim"] {
+                let sentences = &ex.outputs[style];
+                let ending = match style {
+                    "ham" => "함.",
+                    "eum" => "하였음.",
+                    _ => "하는 모습을 보임.",
+                };
+                assert!((2..=4).contains(&sentences.len()));
+                for s in sentences {
+                    assert!(s.text.ends_with(ending), "{}: {}", ex.id, s.text);
+                    assert!(s.evidence.iter().all(|e| ids.contains(&e.as_str())));
+                }
+                let c = check_draft(sentences, &ex.bundle, forbidden(), &[], &[]);
+                assert!(c.sentences.iter().all(|w| w.is_empty()), "{} {style}: {:?}", ex.id, c.sentences);
+                assert!(c.length.is_none(), "{} {style}: {}자", ex.id, c.total_chars);
+                assert!(c.can_confirm);
+            }
+        }
+    }
+
+    #[test]
+    fn request_schema_enum_matches_the_bundle_ids_exactly() {
+        let cx = cx_with_inquiry(5);
+        let job = llm::prepare(&cx.conn, &cx.media, &input(&cx, 0, "슬"), MODEL).unwrap();
+        let ids: Vec<String> = job.bundle.evidence.iter().map(|e| e.id().to_string()).collect();
+        let req = build_request(&job, 0);
+        let schema = &req["response_format"]["json_schema"]["schema"];
+        let en: Vec<String> = schema["properties"]["sentences"]["items"]["properties"]["evidence"]["items"]["enum"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
+        assert_eq!(en, ids);
+        assert_eq!(req["response_format"]["type"], "json_schema");
+        assert_eq!(schema, &response_schema(&job.bundle));
+        assert_eq!(schema["properties"]["sentences"]["minItems"], 2);
+        assert_eq!(schema["properties"]["sentences"]["maxItems"], 4);
+        assert_eq!(schema["properties"]["sentences"]["items"]["properties"]["text"]["minLength"], 15);
+        assert_eq!(schema["properties"]["sentences"]["items"]["properties"]["text"]["maxLength"], 140);
+        // 교사가 뺀 근거는 enum에도 없다.
+        let mut inp = input(&cx, 0, "슬");
+        inp.excluded_ids = vec![ids[0].clone()];
+        let job2 = llm::prepare(&cx.conn, &cx.media, &inp, MODEL).unwrap();
+        let en2 = build_request(&job2, 0)["response_format"]["json_schema"]["schema"]["properties"]["sentences"]["items"]["properties"]["evidence"]["items"]["enum"].clone();
+        assert!(!en2.as_array().unwrap().iter().any(|v| v == &json!(ids[0])));
+        assert_eq!(en2.as_array().unwrap().len(), ids.len() - 1);
+    }
+
+    #[test]
+    fn request_options_disable_thinking_and_fix_sampling() {
+        let cx = cx_with_inquiry(4);
+        let job = llm::prepare(&cx.conn, &cx.media, &input(&cx, 0, "슬"), MODEL).unwrap();
+        let req = build_request(&job, 0);
+        assert_eq!(req["chat_template_kwargs"]["enable_thinking"], false);
+        assert_eq!(req["temperature"], 0.4);
+        assert_eq!(req["max_tokens"], 700);
+        assert_eq!(req["stream"], false);
+        let msgs = req["messages"].as_array().unwrap();
+        assert_eq!(msgs[0]["role"], "system");
+        assert_eq!(msgs.len(), 2 + 2 * prompt().examples.len());
+        assert_eq!(msgs.last().unwrap()["role"], "user");
+        // 예시는 사용자/보조자 쌍으로 들어가고, 보조자 쪽은 JSON이다.
+        assert!(serde_json::from_str::<Value>(msgs[2]["content"].as_str().unwrap()).unwrap()["sentences"].is_array());
+        // 마지막 사용자 메시지는 이번 묶음의 JSON을 담는다.
+        let last = msgs.last().unwrap()["content"].as_str().unwrap();
+        assert!(last.contains(&serde_json::to_string(&job.bundle).unwrap()));
+    }
+
+    #[test]
+    fn seed_comes_from_the_student_id_and_retry_adds_one() {
+        let cx = cx_with_inquiry(4);
+        let job = llm::prepare(&cx.conn, &cx.media, &input(&cx, 0, "슬"), MODEL).unwrap();
+        let a = build_request(&job, 0)["seed"].as_u64().unwrap();
+        assert_eq!(a, build_request(&job, 0)["seed"].as_u64().unwrap());
+        assert_eq!(build_request(&job, 1)["seed"].as_u64().unwrap(), a + 1);
+        assert_eq!(a, seed_for(&cx.ids[0], 0) as u64);
+        assert_ne!(seed_for(&cx.ids[0], 0), seed_for(&cx.ids[1], 0));
+        assert!(a < u32::MAX as u64);
+    }
+
+    #[test]
+    fn system_prompt_carries_style_length_and_standards() {
+        let cx = cx_with_inquiry(4);
+        let job = llm::prepare(&cx.conn, &cx.media, &input(&cx, 0, "슬"), MODEL).unwrap();
+        let statement = "학교 안팎의 모습과 생활을 탐색하며 안전한 학교 생활을 한다.";
+        assert!(job.bundle.standards_text.values().any(|t| t == statement));
+        for (style, s) in [(Style::Ham, "~함."), (Style::Eum, "~하였음."), (Style::Boim, "~하는 모습을 보임.")] {
+            let sp = system_prompt("슬", style, 250, &job.bundle.standards_text);
+            assert!(sp.contains(s), "{style:?}: {sp}");
+            assert!(sp.contains("200~300자") && sp.contains("목표 250자"), "{sp}");
+            assert!(sp.contains(statement) && sp.contains("[2슬01-01]"));
+            assert!(sp.contains("탐구, 질문, 발견"));
+        }
+        assert!(system_prompt("바", Style::Ham, 300, &Default::default()).contains("실천, 습관, 관계"));
+        assert!(system_prompt("즐", Style::Ham, 300, &Default::default()).contains("놀이, 표현, 협력"));
+        // 설정의 문체·글자 수가 요청에 반영된다.
+        save_settings(&cx.conn, &EvalSettings { style: "boim".into(), target_chars: 320, extra_forbidden: vec![] }).unwrap();
+        let job = llm::prepare(&cx.conn, &cx.media, &input(&cx, 0, "슬"), MODEL).unwrap();
+        let sys = build_request(&job, 0)["messages"][0]["content"].as_str().unwrap().to_string();
+        assert!(sys.contains("~하는 모습을 보임.") && sys.contains("목표 320자") && sys.contains("256~384자"));
+        // 예시도 선택한 문체로 들어간다.
+        let ex = build_request(&job, 0)["messages"][2]["content"].as_str().unwrap().to_string();
+        assert!(ex.contains("하는 모습을 보임."));
+    }
+
+    #[test]
+    fn no_student_name_appears_anywhere_in_the_request() {
+        let mut cx = seed();
+        obs_full(&mut cx, &[0, 1], "2027-04-10", "g1s1-exploration", "김하늘이 박서준이랑 함께 별을 관찰함. 이지우가 도와줌", &["[2슬01-01]"], &["탐구", "질문"]);
+        let o = obs_full(&mut cx, &[0], "2027-04-11", "g1s1-school", "하늘이가 서준이와 짝이 되어 돋보기로 관찰함", &["[2슬01-01]"], &["탐구"]);
+        let au = attachments::add_bytes(&cx.conn, &cx.media, &o.id, "audio", "audio/webm", b"audio").unwrap();
+        attachments::set_transcript(&cx.conn, &cx.media, &au.id, "서준이가 별은 왜 반짝여요? 하고 물었어요. 지우는 몰랐어요").unwrap();
+        obs(&mut cx, "2027-04-12", "교실을 살펴봄");
+        let job = llm::prepare(&cx.conn, &cx.media, &input(&cx, 0, "슬"), MODEL).unwrap();
+        for attempt in 0..2 {
+            let body = build_request(&job, attempt).to_string();
+            for name in ["김하늘", "박서준", "이지우", "서준", "지우"] {
+                assert!(!body.contains(name), "{name}: {body}");
+            }
+            assert!(body.contains("친구"));
+            assert!(body.contains("\\\"alias\\\":\\\"학생\\\""));
+        }
+    }
+
+    #[test]
+    fn good_json_is_saved_with_the_llm_generator() {
+        let cx = cx_with_inquiry(4);
+        let (out, seen) = run_with(&cx, vec![Ok(good_output(&cx))]);
+        let r = out.unwrap();
+        assert_eq!(seen.len(), 1);
+        assert!(!r.fell_back && r.notice.is_none());
+        assert_eq!(r.generator, "llm:qwen3-4b-q4km");
+        let d = r.view.draft.unwrap();
+        assert_eq!(d.generator, "llm:qwen3-4b-q4km");
+        assert_eq!(d.status, "draft");
+        assert_eq!(d.sentences.len(), 2);
+        assert!(d.sentences[0].text.starts_with("우주 영상"));
+        assert!(r.view.check.unwrap().sentences.iter().all(|w| !w.iter().any(|x| x.code == NO_EVIDENCE)));
+        // 고쳐 저장해도 만든 방식은 남는다.
+        let saved = save_draft(&cx.conn, &cx.media, &SaveInput { key: key(&cx, 0, "슬"), sentences: d.sentences }).unwrap();
+        assert_eq!(saved.draft.unwrap().generator, "llm:qwen3-4b-q4km");
+    }
+
+    #[test]
+    fn think_text_retries_with_next_seed_then_succeeds() {
+        let cx = cx_with_inquiry(4);
+        let with_think = format!("<think>\n생각\n</think>\n{}", good_output(&cx));
+        let (out, seen) = run_with(&cx, vec![Ok(with_think), Ok(good_output(&cx))]);
+        let r = out.unwrap();
+        assert!(!r.fell_back);
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[1]["seed"].as_u64().unwrap(), seen[0]["seed"].as_u64().unwrap() + 1);
+    }
+
+    #[test]
+    fn think_twice_falls_back_to_template_with_notice() {
+        let cx = cx_with_inquiry(4);
+        let bad = format!("<think>x</think>{}", good_output(&cx));
+        let (out, seen) = run_with(&cx, vec![Ok(bad.clone()), Ok(bad)]);
+        let r = out.unwrap();
+        assert_eq!(seen.len(), 2);
+        assert!(r.fell_back);
+        assert_eq!(r.notice.as_deref(), Some(FALLBACK_NOTICE));
+        assert_eq!(FALLBACK_NOTICE, "언어 모델 초안을 만들지 못해 템플릿 초안을 보여 줍니다");
+        assert!(r.detail.unwrap().contains("<think>"));
+        assert_eq!(r.generator, "template");
+        let d = r.view.draft.unwrap();
+        assert_eq!(d.generator, "template");
+        assert!(!d.sentences.is_empty());
+    }
+
+    #[test]
+    fn parse_failure_retries_and_two_failures_fall_back() {
+        let cx = cx_with_inquiry(4);
+        let (out, seen) = run_with(&cx, vec![Ok("이건 JSON이 아님".into()), Ok(good_output(&cx))]);
+        assert!(!out.unwrap().fell_back);
+        assert_eq!(seen.len(), 2);
+
+        let cx = cx_with_inquiry(4);
+        let (out, seen) = run_with(&cx, vec![Ok("{\"sentences\": []}".into()), Err(LlmError::Failed("서버 응답 오류".into()))]);
+        let r = out.unwrap();
+        assert_eq!(seen.len(), 2);
+        assert!(r.fell_back);
+        assert!(r.detail.unwrap().contains("서버 응답 오류"));
+        assert_eq!(r.view.draft.unwrap().generator, "template");
+    }
+
+    #[test]
+    fn sentence_without_valid_evidence_counts_as_a_failure() {
+        let cx = cx_with_inquiry(4);
+        let no_evidence = json!({ "sentences": [
+            { "text": "우주 영상을 보고 궁금한 점을 질문하며 주변 세계를 탐색함.", "evidence": ["o:없는-id"] },
+            { "text": "돋보기로 곤충을 자세히 관찰하고 발견한 점을 이야기함.", "evidence": [] },
+        ] })
+        .to_string();
+        let (out, seen) = run_with(&cx, vec![Ok(no_evidence), Ok(good_output(&cx))]);
+        assert!(!out.unwrap().fell_back);
+        assert_eq!(seen.len(), 2);
+        let _ = parse_output("{\"sentences\":[{\"text\":\"  \",\"evidence\":[\"o:a\"]}]}").unwrap_err();
+    }
+
+    #[test]
+    fn unavailable_server_does_not_retry_and_falls_back() {
+        let cx = cx_with_inquiry(4);
+        let (out, seen) = run_with(&cx, vec![Err(LlmError::Unavailable("서버를 시작하지 못했습니다".into()))]);
+        let r = out.unwrap();
+        assert_eq!(seen.len(), 1);
+        assert!(r.fell_back);
+        assert_eq!(r.view.draft.unwrap().generator, "template");
+    }
+
+    #[test]
+    fn cancel_stops_without_saving() {
+        let cx = cx_with_inquiry(4);
+        let (out, seen) = run_with(&cx, vec![Err(LlmError::Cancelled)]);
+        assert_eq!(out.unwrap_err(), CANCELLED_MESSAGE);
+        assert_eq!(seen.len(), 1);
+        assert!(view(&cx.conn, &cx.media, &key(&cx, 0, "슬")).unwrap().draft.is_none());
+
+        // 시작 전에 이미 취소되어 있으면 서버를 부르지 않는다.
+        let calls = RefCell::new(0);
+        let chat = |_: &Value| -> Result<String, LlmError> {
+            *calls.borrow_mut() += 1;
+            Ok(String::new())
+        };
+        let cancel = AtomicBool::new(true);
+        assert!(llm::generate_llm_draft(&cx.conn, &cx.media, &input(&cx, 0, "슬"), MODEL, &chat, &cancel).is_err());
+        assert_eq!(*calls.borrow(), 0);
+    }
+
+    #[test]
+    fn too_little_evidence_is_rejected_before_any_request() {
+        let cx = cx_with_inquiry(2);
+        let (out, seen) = run_with(&cx, vec![Ok(good_output(&cx))]);
+        assert!(out.unwrap_err().contains("기록이 부족합니다"));
+        assert!(seen.is_empty());
+    }
+
+    #[test]
+    fn model_setting_defaults_and_rejects_non_llm_ids() {
+        let conn = test_conn();
+        assert_eq!(llm::load_model_id(&conn).unwrap(), "qwen3-4b-q4km");
+        settings::set(&conn, "evalModelId", &json!("qwen2.5-1.5b-q4km")).unwrap();
+        assert_eq!(llm::load_model_id(&conn).unwrap(), "qwen2.5-1.5b-q4km");
+        settings::set(&conn, "evalModelId", &json!("whisper-base")).unwrap();
+        assert_eq!(llm::load_model_id(&conn).unwrap(), "qwen3-4b-q4km");
+        settings::set(&conn, "evalModelId", &json!("nope")).unwrap();
+        assert_eq!(llm::load_model_id(&conn).unwrap(), "qwen3-4b-q4km");
+    }
+}

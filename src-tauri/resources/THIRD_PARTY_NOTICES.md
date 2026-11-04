@@ -4,10 +4,11 @@
 
 | 구성 요소 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
-| llama.cpp (llama-bench, ggml) | 언어 모델 속도 측정 | MIT | https://github.com/ggml-org/llama.cpp |
+| llama.cpp (llama-bench, llama-server, ggml) | 언어 모델 속도 측정, 평어 초안 생성(이 PC 안에서만 실행) | MIT | https://github.com/ggml-org/llama.cpp |
 | whisper.cpp (whisper-cli, ggml) | 음성 인식 속도 측정 | MIT | https://github.com/ggml-org/whisper.cpp |
 | samples/jfk.wav | 음성 인식 측정용 샘플(11초) | whisper.cpp 저장소에 포함된 파일 | https://github.com/ggml-org/whisper.cpp/tree/master/samples |
 | Qwen2.5 0.5B/1.5B Instruct GGUF (내려받기) | 언어 모델 측정 | Apache-2.0 | https://huggingface.co/Qwen |
+| Qwen3 4B GGUF Q4_K_M (내려받기) | 평어 초안 생성 | Apache-2.0 | https://huggingface.co/Qwen/Qwen3-4B-GGUF |
 | Whisper base ggml (내려받기) | 음성 인식 측정 | MIT | https://huggingface.co/ggerganov/whisper.cpp |
 | Whisper small q5_1 ggml (내려받기) | 음성 메모 자동 자막(기본) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
 | Whisper base q5_1 ggml (내려받기) | 음성 메모 자동 자막(느린 PC용) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
