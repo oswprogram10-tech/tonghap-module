@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import MakingbookPrint from '../print/MakingbookPrint';
 import { errorText } from '../records/api';
 import { topicTitle } from '../records/util';
 import { ACTIVITY_KIND_LABEL, BUILTIN_ACTIVITIES, activitiesApi, cardsForUnit, subjectChip, type Activity, type ActivityKind } from './activities';
@@ -25,6 +26,7 @@ export function ActivityCardView({
   extra?: React.ReactNode;
 }) {
   const subj = subjectChip(card.subject);
+  const [printing, setPrinting] = useState(false);
   return (
     <li className={selected ? 'act-card selected' : 'act-card'}>
       <div className="act-card-head">
@@ -56,7 +58,13 @@ export function ActivityCardView({
       <button className={selected ? 'diag-primary' : 'diag-secondary'} aria-pressed={selected} onClick={onPick} aria-label={`${card.title} ${pickLabel ?? '이 카드로 차시 만들기'}`}>
         {pickLabel ?? '이 카드로 차시 만들기'}
       </button>
+      {card.makingbook && (
+        <button className="diag-secondary" onClick={() => setPrinting(true)} aria-label={`${card.title} 틀 인쇄`}>
+          틀 인쇄
+        </button>
+      )}
       {extra}
+      {printing && card.makingbook && <MakingbookPrint spec={card.makingbook} onClose={() => setPrinting(false)} />}
     </li>
   );
 }

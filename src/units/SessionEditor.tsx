@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import MakingbookPrint from '../print/MakingbookPrint';
 import { curriculum } from '../curriculum';
 import { errorText } from '../records/api';
 import { shorten, standardByCode, topicStandards } from '../records/util';
 import { unitsApi, type Session, type SessionInput, type SessionKind, type SessionStandard, type SessionStatus, type StandardMode, type UnitDetail } from './api';
-import { cardPlan, type Activity } from './activities';
+import { BUILTIN_ACTIVITIES, activitiesApi, cardPlan, type Activity } from './activities';
 import FollowUpDialog from './FollowUpDialog';
 import { KIND_LABEL, MODE_LABEL, STATUS_LABEL, toSessions } from './util';
 
@@ -37,6 +38,26 @@ export default function SessionEditor({ unit, session, card, stageId, onClose, o
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [following, setFollowing] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  // 틀 인쇄에 쓸 카드: 새 차시는 고른 카드, 수정은 차시에 연결된 카드.
+  const [linked, setLinked] = useState<Activity | null>(card ?? null);
+  const linkedId = session?.activityId ?? null;
+  useEffect(() => {
+    if (card || !linkedId) return;
+    const builtin = BUILTIN_ACTIVITIES.find((a) => a.id === linkedId);
+    if (builtin) {
+      setLinked(builtin);
+      return;
+    }
+    let live = true;
+    activitiesApi
+      .customList()
+      .then((list) => live && setLinked(list.find((a) => a.id === linkedId) ?? null))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [card, linkedId]);
 
   const topicStd = topicStandards(unit.topicBookId);
   const topicCodes = topicStd.map((x) => x.standard.code);
@@ -137,6 +158,13 @@ export default function SessionEditor({ unit, session, card, stageId, onClose, o
           활동 내용
           <textarea className="rec-textarea" rows={5} value={plan} onChange={(e) => setPlan(e.target.value)} />
         </label>
+        {linked?.makingbook && (
+          <div className="rec-row" style={{ marginTop: 8 }}>
+            <button type="button" className="diag-secondary" onClick={() => setPrinting(true)}>
+              틀 인쇄
+            </button>
+          </div>
+        )}
 
         <div className="rec-row rec-wrap" style={{ marginTop: 12 }}>
           <label className="rec-field">
@@ -263,6 +291,7 @@ export default function SessionEditor({ unit, session, card, stageId, onClose, o
         </div>
       </div>
 
+      {printing && linked?.makingbook && <MakingbookPrint spec={linked.makingbook} onClose={() => setPrinting(false)} />}
       {following && session && (
         <FollowUpDialog
           unit={unit}

@@ -2,6 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import builtin from '../../data/activities/activities.json';
 import { curriculum } from '../curriculum';
+import type { MakingbookSpec } from '../print/layouts';
 
 export type ActivityKind = 'general' | 'safety' | 'makingbook';
 
@@ -16,6 +17,8 @@ export interface Activity {
   steps: string[];
   materials: string[];
   keywords: string[];
+  /** 메이킹북 카드의 인쇄 틀. */
+  makingbook?: MakingbookSpec;
 }
 
 export interface Recommendation {

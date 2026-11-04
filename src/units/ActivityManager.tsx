@@ -3,6 +3,7 @@ import { curriculum } from '../curriculum';
 import { errorText, type ClassInfo } from '../records/api';
 import { topicStandards, topicsOfGrade } from '../records/util';
 import { ACTIVITY_KIND_LABEL, BUILTIN_ACTIVITIES, activitiesApi, subjectChip, type Activity, type ActivityKind } from './activities';
+import { TEMPLATE_HELP, TEMPLATE_LABEL, TEMPLATE_PAGES, type MakingbookTemplate } from '../print/layouts';
 import { ActivityCardView } from './ActivityPicker';
 
 interface Draft {
@@ -17,13 +18,17 @@ interface Draft {
   steps: string;
   materials: string;
   keywords: string;
+  /** 메이킹북 틀(빈 문자열이면 틀 없음). */
+  mbTemplate: MakingbookTemplate | '';
+  mbTitle: string;
+  mbPages: string[];
 }
 
 const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean);
 const commas = (s: string) => s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
 
 function emptyDraft(topicBookId: string): Draft {
-  return { title: '', topicBookId, subject: '슬', extraStandards: [], kind: 'general', minutes: 40, steps: '', materials: '', keywords: '' };
+  return { title: '', topicBookId, subject: '슬', extraStandards: [], kind: 'general', minutes: 40, steps: '', materials: '', keywords: '', mbTemplate: '', mbTitle: '', mbPages: [] };
 }
 
 function toDraft(a: Activity, keepId: boolean): Draft {
@@ -38,6 +43,9 @@ function toDraft(a: Activity, keepId: boolean): Draft {
     steps: a.steps.join('\n'),
     materials: a.materials.join(', '),
     keywords: a.keywords.join(', '),
+    mbTemplate: a.makingbook?.template ?? '',
+    mbTitle: a.makingbook?.title ?? '',
+    mbPages: a.makingbook?.pages ?? [],
   };
 }
 
@@ -79,6 +87,10 @@ export default function ActivityManager({ cls, onClose }: { cls: ClassInfo; onCl
         steps: lines(draft.steps),
         materials: commas(draft.materials),
         keywords: commas(draft.keywords),
+        makingbook:
+          draft.kind === 'makingbook' && draft.mbTemplate
+            ? { template: draft.mbTemplate, title: draft.mbTitle.trim(), pages: draft.mbPages.slice(0, TEMPLATE_PAGES[draft.mbTemplate]).map((p) => p.trim()) }
+            : undefined,
       });
       setDraft(null);
       setError(null);
@@ -226,6 +238,41 @@ export default function ActivityManager({ cls, onClose }: { cls: ClassInfo; onCl
               ))}
             </span>
           </div>
+          {draft.kind === 'makingbook' && (
+            <>
+              <h3 className="rec-h">인쇄 틀 (선택)</h3>
+              <span className="rec-chips" role="group" aria-label="인쇄 틀">
+                <button type="button" className={draft.mbTemplate === '' ? 'rec-chip on' : 'rec-chip'} aria-pressed={draft.mbTemplate === ''} onClick={() => set('mbTemplate', '')}>
+                  틀 없음
+                </button>
+                {(Object.keys(TEMPLATE_LABEL) as MakingbookTemplate[]).map((t) => (
+                  <button
+                    type="button"
+                    key={t}
+                    className={draft.mbTemplate === t ? 'rec-chip on' : 'rec-chip'}
+                    aria-pressed={draft.mbTemplate === t}
+                    onClick={() => setDraft({ ...draft, mbTemplate: t, mbPages: Array.from({ length: TEMPLATE_PAGES[t] }, (_, i) => draft.mbPages[i] ?? '') })}
+                  >
+                    {TEMPLATE_LABEL[t]}
+                  </button>
+                ))}
+              </span>
+              {draft.mbTemplate && (
+                <>
+                  <label className="rec-field" style={{ marginTop: 8 }}>
+                    표지 제목 (2~16자)
+                    <input value={draft.mbTitle} maxLength={16} onChange={(e) => set('mbTitle', e.target.value)} />
+                  </label>
+                  {draft.mbPages.map((text, i) => (
+                    <label className="rec-field" key={i} style={{ marginTop: 8 }}>
+                      {draft.mbTemplate === 'zine8' ? `속 ${i + 1}쪽 안내` : TEMPLATE_HELP[draft.mbTemplate as MakingbookTemplate][i]} (2~24자)
+                      <input value={text} maxLength={24} onChange={(e) => set('mbPages', draft.mbPages.map((p, j) => (j === i ? e.target.value : p)))} />
+                    </label>
+                  ))}
+                </>
+              )}
+            </>
+          )}
           <label className="rec-field" style={{ marginTop: 8 }}>
             진행 순서 (한 줄에 하나, 3~5줄, 한 줄 6~60자)
             <textarea className="rec-textarea" rows={5} value={draft.steps} onChange={(e) => set('steps', e.target.value)} />

@@ -21,6 +21,7 @@ fn card(id: &str, subject: &str, kind: &str, keywords: &[&str]) -> Activity {
         steps: vec!["처음 모여서 이야기를 나눈다".into(), "직접 해 보며 살펴본다".into(), "알게 된 것을 정리한다".into()],
         materials: vec!["돋보기".into()],
         keywords: keywords.iter().map(|k| k.to_string()).collect(),
+        makingbook: None,
     }
 }
 
@@ -358,4 +359,65 @@ fn recommendation_examples() {
     let r2 = recommend_with(&conn, &cards, &RecommendInput { unit_id: unit.id.clone(), after_session_id: Some(done.id), questions: None }).unwrap();
     show("예시 2: 질문 입력 없이 앞 차시(안전 80분, 슬 기준 다룸)의 학생 질문 사용", &r2);
     assert_eq!(r2[0].activity.id, "trail-safety");
+}
+
+fn make_card(template: &str, pages: usize) -> Activity {
+    let mut c = card("", "즐", "makingbook", &["책", "그림", "만들기"]);
+    c.makingbook = Some(Makingbook { template: template.into(), title: "우리 학교".into(), pages: (0..pages).map(|i| format!("{}번째 칸을 그려요", i + 1)).collect() });
+    c
+}
+
+#[test]
+fn custom_makingbook_template_is_saved_and_read_back() {
+    let conn = test_conn();
+    for (template, pages) in [("zine8", 6), ("card2", 2), ("accordion4", 4)] {
+        let saved = save_custom(&conn, &make_card(template, pages)).unwrap();
+        let found = find(&conn, &saved.id).unwrap();
+        assert_eq!(found.makingbook.as_ref().map(|m| (m.template.as_str(), m.pages.len())), Some((template, pages)));
+    }
+    // 틀이 없는 메이킹북 카드도 저장할 수 있다.
+    assert!(save_custom(&conn, &card("", "즐", "makingbook", &["책", "그림", "만들기"])).unwrap().makingbook.is_none());
+    // 공백은 다듬는다.
+    let mut c = make_card("card2", 2);
+    c.makingbook.as_mut().unwrap().title = "  내 책  ".into();
+    assert_eq!(save_custom(&conn, &c).unwrap().makingbook.unwrap().title, "내 책");
+}
+
+#[test]
+fn invalid_makingbook_templates_are_rejected() {
+    let conn = test_conn();
+    // 틀별 안내 개수
+    for (template, pages) in [("zine8", 5), ("zine8", 7), ("card2", 3), ("accordion4", 2)] {
+        let err = save_custom(&conn, &make_card(template, pages)).unwrap_err();
+        assert!(err.contains("안내가"), "{template} {pages}: {err}");
+    }
+    // 메이킹북이 아닌 카드
+    let mut c = make_card("zine8", 6);
+    c.kind = "general".into();
+    assert!(save_custom(&conn, &c).unwrap_err().contains("메이킹북 카드에만"));
+    // 모르는 틀, 길이 제한
+    assert!(save_custom(&conn, &make_card("book9", 6)).is_err());
+    let mut c = make_card("card2", 2);
+    c.makingbook.as_mut().unwrap().title = "가".into();
+    assert!(save_custom(&conn, &c).is_err());
+    let mut c = make_card("card2", 2);
+    c.makingbook.as_mut().unwrap().title = "가".repeat(17);
+    assert!(save_custom(&conn, &c).is_err());
+    let mut c = make_card("card2", 2);
+    c.makingbook.as_mut().unwrap().pages[1] = "가".repeat(25);
+    assert!(save_custom(&conn, &c).is_err());
+    let mut c = make_card("card2", 2);
+    c.makingbook.as_mut().unwrap().pages[0] = " 가 ".into();
+    assert!(save_custom(&conn, &c).is_err());
+    assert!(list_custom(&conn).unwrap().is_empty());
+}
+
+#[test]
+fn builtin_makingbook_cards_all_have_a_template() {
+    let mb: Vec<_> = builtin().iter().filter(|a| a.kind == "makingbook").collect();
+    assert_eq!(mb.len(), 16);
+    for a in &mb {
+        assert!(a.makingbook.is_some(), "{} 메이킹북 카드에 인쇄 틀이 없음", a.id);
+    }
+    assert!(builtin().iter().filter(|a| a.kind != "makingbook").all(|a| a.makingbook.is_none()));
 }

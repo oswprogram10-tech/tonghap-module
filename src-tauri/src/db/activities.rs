@@ -45,6 +45,27 @@ pub struct Activity {
     #[serde(default)]
     pub materials: Vec<String>,
     pub keywords: Vec<String>,
+    /// 메이킹북 카드의 인쇄 틀(선택).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub makingbook: Option<Makingbook>,
+}
+
+/// 메이킹북 인쇄 틀: 틀 종류, 표지 제목, 쪽마다 안내.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Makingbook {
+    pub template: String,
+    pub title: String,
+    pub pages: Vec<String>,
+}
+
+/// 틀별로 필요한 안내 개수.
+fn makingbook_pages(template: &str) -> Option<usize> {
+    match template {
+        "zine8" => Some(6),
+        "card2" => Some(2),
+        "accordion4" => Some(4),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +153,23 @@ pub fn validate(card: &Activity) -> DbResult<Activity> {
     a.keywords = a.keywords.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
     if !(3..=8).contains(&a.keywords.len()) || a.keywords.iter().any(|k| k.chars().count() > 10) {
         return Err("낱말은 3~8개, 하나는 10자 이하로 적어 주세요".to_string());
+    }
+    if let Some(mb) = a.makingbook.as_mut() {
+        if a.kind != "makingbook" {
+            return Err("인쇄 틀은 메이킹북 카드에만 넣을 수 있습니다".to_string());
+        }
+        let need = makingbook_pages(&mb.template).ok_or("인쇄 틀은 8쪽 접이 책·반 접기 카드·4칸 병풍책 중에서 골라 주세요")?;
+        mb.title = mb.title.trim().to_string();
+        if !(2..=16).contains(&mb.title.chars().count()) {
+            return Err("표지 제목은 2~16자로 적어 주세요".to_string());
+        }
+        mb.pages = mb.pages.iter().map(|p| p.trim().to_string()).collect();
+        if mb.pages.len() != need {
+            return Err(format!("이 틀에는 안내가 {need}개 필요합니다 (지금 {}개)", mb.pages.len()));
+        }
+        if mb.pages.iter().any(|p| !(2..=24).contains(&p.chars().count())) {
+            return Err("쪽마다 안내는 2~24자로 적어 주세요".to_string());
+        }
     }
     Ok(a)
 }
