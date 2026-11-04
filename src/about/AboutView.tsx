@@ -9,7 +9,7 @@ import { formatBytes } from '../diag/estimate';
 import { errorText } from '../records/api';
 import activities from '../../data/activities/activities.json';
 import licenses from './licenses.json';
-import { CURRICULUM_SOURCE, INSTALL_WARNING_STEPS, PRIVACY_NOTE, UPDATE_STEPS } from './content';
+import { CURRICULUM_SOURCE, INSTALL_WARNING_STEPS, PRIVACY_NOTE, SUPPORT_EMAIL, UPDATE_STEPS } from './content';
 import Markdown from './Markdown';
 import SupportExport from '../support/SupportExport';
 
@@ -161,6 +161,9 @@ export default function AboutView({ onGoBackup }: { onGoBackup: () => void }) {
         <p className="diag-note">
           문제가 생기면 진단 파일을 만들어 보내 주세요. 앱 버전·PC 사양·기록 개수(숫자만)와 오류 기록이 들어 있으며, 학생 이름과 기록 내용은 들어가지 않습니다. 파일은 이 PC에만
           만들어지고 앱이 자동으로 보내지 않습니다.
+        </p>
+        <p className="diag-note">
+          문의처: <strong>{SUPPORT_EMAIL}</strong>
         </p>
         <SupportExport />
       </section>

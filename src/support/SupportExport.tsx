@@ -5,6 +5,7 @@ import { saveFile } from '../lib/dialogs';
 import { formatBytes } from '../diag/estimate';
 import { errorText } from '../records/api';
 import { defaultFileName, supportApi, type SupportItem } from './api';
+import { SUPPORT_EMAIL } from '../about/content';
 
 type Phase =
   | { kind: 'idle' }
@@ -56,7 +57,7 @@ export default function SupportExport() {
       ) : phase.kind === 'done' ? (
         <>
           <p className="diag-note" role="status">
-            진단 파일을 만들었습니다. 이 파일을 문의처로 보내 주세요. 앱이 자동으로 보내지는 않습니다.
+            진단 파일을 만들었습니다. 이 파일을 문의처({SUPPORT_EMAIL})로 보내 주세요. 앱이 자동으로 보내지는 않습니다.
           </p>
           <p className="diag-hint">
             <code>{phase.path}</code>

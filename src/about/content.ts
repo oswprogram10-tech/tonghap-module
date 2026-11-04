@@ -4,6 +4,9 @@
 export const PRIVACY_NOTE =
   '모든 기록은 이 PC에만 저장됩니다. 앱이 인터넷을 쓰는 것은 기기 점검에서 AI 모델을 내려받을 때뿐입니다.';
 
+/** 문의처. docs/MANUAL.md「문의할 때」, docs/INSTALL.md와 같게 유지한다. */
+export const SUPPORT_EMAIL = 'oswprogram10@gmail.com';
+
 export const UPDATE_STEPS: string[] = [
   '먼저 백업 파일을 만듭니다(만일을 위해).',
   '판매 페이지에서 새 버전 설치 파일을 받아 실행합니다. 이미 설치된 앱 위에 덮어 설치됩니다.',
