@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "validate:data": "node scripts/validate-curriculum.mjs && node scripts/validate-plays.mjs && node scripts/validate-evaluation.mjs && node scripts/validate-synthetic.mjs",
+    "validate:data": "node scripts/validate-curriculum.mjs && node scripts/validate-plays.mjs && node scripts/validate-evaluation.mjs && node scripts/validate-synthetic.mjs && node scripts/validate-activities.mjs",
     "tauri": "tauri",
     "fetch:engines": "node scripts/fetch-engines.mjs",
     "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test ml/synth/generate-bundles.test.mjs src/board/random.test.mjs src/stt/wav.test.mjs"

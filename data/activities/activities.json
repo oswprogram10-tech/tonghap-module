@@ -1,0 +1,41 @@
+{
+  "$schema": "./schema/activities.schema.json",
+  "dataVersion": "0.1.0",
+  "note": "시작용 활동 카드입니다. 교사가 고쳐 쓰는 안내이며 교과서 본문이 아닙니다.",
+  "activities": [
+    {
+      "id": "school-library-tour",
+      "topicBookId": "g1s1-school",
+      "title": "학교 도서관 탐험하기",
+      "subject": "슬",
+      "standards": ["[2슬01-01]", "[2바01-01]"],
+      "kind": "general",
+      "minutes": 40,
+      "steps": [
+        "도서관에 가 본 경험과 궁금한 점을 이야기한다",
+        "도서관을 둘러보며 책이 놓인 곳과 이용 약속을 찾는다",
+        "알게 된 것을 그림 지도에 붙임 딱지로 표시한다",
+        "도서관에서 지킬 약속을 함께 정리한다"
+      ],
+      "materials": ["그림 지도", "붙임 딱지"],
+      "keywords": ["도서관", "책", "약속", "학교", "지도"]
+    },
+    {
+      "id": "school-safety-hallway",
+      "topicBookId": "g1s1-school",
+      "title": "교실과 복도에서 안전하게",
+      "subject": "바",
+      "standards": ["[2바01-01]"],
+      "kind": "safety",
+      "minutes": 40,
+      "steps": [
+        "교실과 복도 사진에서 위험해 보이는 곳을 찾는다",
+        "왜 위험한지, 어떻게 하면 안전한지 이야기한다",
+        "복도 걷기·계단 오르내리기를 직접 연습한다",
+        "우리 반 안전 약속을 정해 교실에 붙인다"
+      ],
+      "materials": ["교실·복도 사진"],
+      "keywords": ["안전", "복도", "계단", "교실", "약속"]
+    }
+  ]
+}
