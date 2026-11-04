@@ -179,6 +179,7 @@ impl LlmServer {
                 });
                 cmd.stderr(log.map_or_else(Stdio::null, Stdio::from));
                 let child = cmd.spawn().map_err(|e| format!("언어 모델 서버를 실행할 수 없습니다({}): {e}", spec.program.display()))?;
+                crate::engine::attach_to_app_job(&child);
                 Ok(Box::new(child) as Box<dyn Proc>)
             }),
             Box::new(|port| matches!(http(port, "GET", "/health", None, Duration::from_secs(2), &AtomicBool::new(false)), Ok((200, _)))),
