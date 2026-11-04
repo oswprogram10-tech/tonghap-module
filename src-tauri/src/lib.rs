@@ -4,7 +4,10 @@ mod db;
 mod diag;
 mod engine;
 mod llm_server;
+mod paths;
 mod stt;
+#[doc(hidden)]
+pub mod testing;
 
 use serde::Serialize;
 
@@ -30,7 +33,12 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             use tauri::Manager;
-            let data_dir = app.path().app_local_data_dir()?.join("data");
+            let local = paths::local_data_dir(app.handle())?;
+            // 테스트용 폴더를 쓰면 설정 파일의 asset 범위($APPLOCALDATA)가 맞지 않으므로 사진 폴더를 따로 허용한다.
+            if cfg!(debug_assertions) && std::env::var_os(paths::DATA_DIR_ENV).is_some_and(|v| !v.is_empty()) {
+                let _ = app.asset_protocol_scope().allow_directory(local.join("data").join("media"), true);
+            }
+            let data_dir = local.join("data");
             let (conn, media) = db::open(&data_dir)?;
             app.manage(std::sync::Mutex::new(conn));
             app.manage(media);

@@ -12,7 +12,8 @@
     "licenses": "node scripts/collect-licenses.mjs",
     "licenses:full": "node scripts/build-third-party-licenses.mjs",
     "fetch:engines": "node scripts/fetch-engines.mjs",
-    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test ml/synth/generate-bundles.test.mjs src/board/random.test.mjs src/stt/wav.test.mjs scripts/collect-licenses.test.mjs scripts/third-party-licenses.test.mjs"
+    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test ml/synth/generate-bundles.test.mjs src/board/random.test.mjs src/stt/wav.test.mjs scripts/collect-licenses.test.mjs scripts/third-party-licenses.test.mjs",
+    "e2e": "node --test --test-concurrency=1 e2e/app.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
@@ -28,6 +29,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "ajv": "^8.20.0",
+    "selenium-webdriver": "4.50.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.0"
   }

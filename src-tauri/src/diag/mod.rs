@@ -111,9 +111,7 @@ pub fn model_spec(id: &str) -> DiagResult<&'static ModelSpec> {
 }
 
 pub fn models_dir(app: &AppHandle) -> DiagResult<PathBuf> {
-    let dir = app
-        .path()
-        .app_local_data_dir()
+    let dir = crate::paths::local_data_dir(app)
         .map_err(|e| format!("앱 데이터 폴더를 찾을 수 없음: {e}"))?
         .join("models");
     std::fs::create_dir_all(&dir).map_err(|e| format!("모델 폴더를 만들 수 없음({}): {e}", dir.display()))?;

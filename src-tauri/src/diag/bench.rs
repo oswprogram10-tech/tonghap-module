@@ -1,6 +1,7 @@
 //! 번들된 llama.cpp·whisper.cpp 실행 파일로 속도를 잰다.
 //! 엔진 파일은 scripts/fetch-engines.mjs가 src-tauri/resources/engines/에 넣는다.
 
+use std::path::Path;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -9,8 +10,8 @@ use tauri::AppHandle;
 use super::{model_path, model_spec, DiagResult, ModelKind};
 use crate::engine::{engine, exe, resources, run, tail};
 
-const LLM_TIMEOUT: Duration = Duration::from_secs(15 * 60);
-const STT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+pub const LLM_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+pub const STT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// resources/samples/jfk.wav 길이(초)
 const SAMPLE_SECONDS: f64 = 11.0;
 
@@ -38,10 +39,10 @@ pub fn diag_engines(app: AppHandle) -> DiagResult<EngineInfo> {
 }
 
 #[derive(Deserialize)]
-struct LlamaBenchRow {
-    n_prompt: u64,
-    n_gen: u64,
-    avg_ts: f64,
+pub struct LlamaBenchRow {
+    pub n_prompt: u64,
+    pub n_gen: u64,
+    pub avg_ts: f64,
     #[serde(default)]
     backends: String,
     #[serde(default)]
@@ -55,7 +56,7 @@ struct LlamaBenchRow {
 }
 
 /// llama-bench `-o json` 출력에서 프롬프트 처리(pp)와 토큰 생성(tg) 행을 찾는다.
-fn parse_llama_bench(stdout: &str) -> DiagResult<(LlamaBenchRow, LlamaBenchRow)> {
+pub fn parse_llama_bench(stdout: &str) -> DiagResult<(LlamaBenchRow, LlamaBenchRow)> {
     let rows: Vec<LlamaBenchRow> =
         serde_json::from_str(stdout.trim()).map_err(|e| format!("측정 결과를 읽을 수 없음: {e}"))?;
     let mut pp = None;
@@ -71,6 +72,29 @@ fn parse_llama_bench(stdout: &str) -> DiagResult<(LlamaBenchRow, LlamaBenchRow)>
         (Some(pp), Some(tg)) => Ok((pp, tg)),
         _ => Err("측정 결과에 프롬프트/생성 항목이 없습니다".to_string()),
     }
+}
+
+/// llama-bench 인자. mode: "gpu"(가능한 모든 층을 GPU에) 또는 "cpu"(GPU 장치 사용 안 함)
+pub fn llama_bench_args(model: &Path, mode: &str) -> DiagResult<Vec<String>> {
+    let mut args: Vec<String> = vec![
+        "-m".into(),
+        model.to_string_lossy().into_owned(),
+        // 평어 생성과 비슷하게: 프롬프트 처리 512토큰, 생성 128토큰, 2회 반복
+        "-p".into(),
+        "512".into(),
+        "-n".into(),
+        "128".into(),
+        "-r".into(),
+        "2".into(),
+        "-o".into(),
+        "json".into(),
+    ];
+    match mode {
+        "gpu" => args.extend(["-ngl".into(), "99".into()]),
+        "cpu" => args.extend(["-ngl".into(), "0".into(), "-dev".into(), "none".into()]),
+        _ => return Err(format!("알 수 없는 측정 방식: {mode}")),
+    }
+    Ok(args)
 }
 
 #[derive(Serialize)]
@@ -102,24 +126,7 @@ pub async fn diag_bench_llm(app: AppHandle, model_id: String, mode: String) -> D
     }
     let program = engine(&app, "llama", "llama-bench")?;
 
-    let mut args: Vec<String> = vec![
-        "-m".into(),
-        model.to_string_lossy().into_owned(),
-        // 평어 생성과 비슷하게: 프롬프트 처리 512토큰, 생성 128토큰, 2회 반복
-        "-p".into(),
-        "512".into(),
-        "-n".into(),
-        "128".into(),
-        "-r".into(),
-        "2".into(),
-        "-o".into(),
-        "json".into(),
-    ];
-    match mode.as_str() {
-        "gpu" => args.extend(["-ngl".into(), "99".into()]),
-        "cpu" => args.extend(["-ngl".into(), "0".into(), "-dev".into(), "none".into()]),
-        _ => return Err(format!("알 수 없는 측정 방식: {mode}")),
-    }
+    let args = llama_bench_args(&model, &mode)?;
 
     let out = tauri::async_runtime::spawn_blocking(move || run(&program, &args, LLM_TIMEOUT))
         .await

@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use super::bundle::{self, Bundle, Evidence, MIN_EVIDENCE};
 use super::check::{check_draft, NO_EVIDENCE};
@@ -163,24 +163,29 @@ pub type Chat<'a> = &'a dyn Fn(&Value) -> Result<String, LlmError>;
 /// 요청 본문. `attempt`는 0부터.
 pub fn build_request(job: &Job, attempt: u32) -> Value {
     let style = Style::parse(&job.settings.style).unwrap_or(Style::Ham);
+    request_body(&job.bundle, style, job.settings.target_chars, seed_for(&job.key.student_id, attempt))
+}
+
+/// 묶음 하나로 요청 본문을 만든다(`build_request`와 엔진 통합 테스트가 함께 쓴다).
+pub fn request_body(bundle: &Bundle, style: Style, target_chars: usize, seed: u32) -> Value {
     let key = style_key(style);
-    let mut messages = vec![json!({ "role": "system", "content": system_prompt(&job.bundle.subject, style, job.settings.target_chars, &job.bundle.standards_text) })];
+    let mut messages = vec![json!({ "role": "system", "content": system_prompt(&bundle.subject, style, target_chars, &bundle.standards_text) })];
     for ex in &prompt().examples {
         if let Some(sentences) = ex.outputs.get(key) {
             messages.push(json!({ "role": "user", "content": user_message(&ex.bundle) }));
             messages.push(json!({ "role": "assistant", "content": json!({ "sentences": sentences }).to_string() }));
         }
     }
-    messages.push(json!({ "role": "user", "content": user_message(&job.bundle) }));
+    messages.push(json!({ "role": "user", "content": user_message(bundle) }));
     json!({
         "messages": messages,
         "temperature": TEMPERATURE,
-        "seed": seed_for(&job.key.student_id, attempt),
+        "seed": seed,
         "max_tokens": MAX_TOKENS,
         "stream": false,
         // 생각(thinking)을 끈다: llama-server의 chat_template_kwargs.enable_thinking (tools/server/server-common.cpp).
         "chat_template_kwargs": { "enable_thinking": false },
-        "response_format": { "type": "json_schema", "json_schema": { "name": "pyeongeo_draft", "strict": true, "schema": response_schema(&job.bundle) } },
+        "response_format": { "type": "json_schema", "json_schema": { "name": "pyeongeo_draft", "strict": true, "schema": response_schema(bundle) } },
     })
 }
 
@@ -330,7 +335,7 @@ pub fn eval_llm_cancel(server: State<Arc<LlmServer>>) {
 }
 
 fn log_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path().app_local_data_dir().ok().map(|d| d.join("logs").join("llama-server.log"))
+    crate::paths::local_data_dir(app).ok().map(|d| d.join("logs").join("llama-server.log"))
 }
 
 /// 언어 모델로 초안을 만든다. 서버 호출은 DB 잠금 밖에서 하고, 실패하면 템플릿 초안으로 대신한다.

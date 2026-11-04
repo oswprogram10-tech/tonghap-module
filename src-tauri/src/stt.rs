@@ -21,7 +21,7 @@ use crate::engine::{engine, run, tail};
 pub const MODEL_DEFAULT: &str = "whisper-small-q5";
 pub const MODEL_LIGHT: &str = "whisper-base-q5";
 pub const MAX_SECONDS: f64 = 300.0;
-const STT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+pub const STT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 pub const EVENT: &str = "stt://updated";
 
 type Engine<'a> = &'a dyn Fn(&Path, &Path) -> Result<String, String>;
@@ -116,6 +116,34 @@ pub fn clean_transcript(raw: &str) -> Result<String, String> {
         return Err("말소리를 찾지 못했습니다".to_string());
     }
     Ok(lines.join("\n"))
+}
+
+// ---------- 엔진 인자 ----------
+
+/// 받아쓰기에 쓸 스레드 수(물리 코어 수, 1~8).
+pub fn whisper_threads() -> usize {
+    sysinfo::System::physical_core_count()
+        .or_else(|_| std::thread::available_parallelism().map(|n| n.get()))
+        .unwrap_or(4)
+        .clamp(1, 8)
+}
+
+/// whisper-cli 인자. 앱의 자막은 `lang`을 `ko`로 부른다(엔진 통합 테스트도 같은 함수를 쓴다).
+pub fn whisper_args(model: &Path, wav: &Path, lang: &str) -> Vec<String> {
+    vec![
+        "-m".into(),
+        model.to_string_lossy().into_owned(),
+        "-f".into(),
+        wav.to_string_lossy().into_owned(),
+        "-l".into(),
+        lang.into(),
+        "-t".into(),
+        whisper_threads().to_string(),
+        "-nt".into(),
+        "-np".into(),
+        // --prompt(한국어 안내문)는 넣지 않는다. whisper-cli는 윈도우에서 인자를 시스템 코드 페이지
+        // (한국어 윈도우는 CP949)로 받는데 프롬프트는 UTF-8로 토큰화하므로 글자가 깨진다.
+    ]
 }
 
 // ---------- 설정 ----------
@@ -291,24 +319,7 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
                     return Err("음성 자막 모델이 없습니다. 기기 점검 탭에서 내려받아 주세요".to_string());
                 }
                 let program = engine(&app, "whisper", "whisper-cli")?;
-                let threads = sysinfo::System::physical_core_count()
-                    .or_else(|_| std::thread::available_parallelism().map(|n| n.get()))
-                    .unwrap_or(4)
-                    .clamp(1, 8);
-                let args: Vec<String> = vec![
-                    "-m".into(),
-                    model.to_string_lossy().into_owned(),
-                    "-f".into(),
-                    wav.to_string_lossy().into_owned(),
-                    "-l".into(),
-                    "ko".into(),
-                    "-t".into(),
-                    threads.to_string(),
-                    "-nt".into(),
-                    "-np".into(),
-                    // --prompt(한국어 안내문)는 넣지 않는다. whisper-cli는 윈도우에서 인자를 시스템 코드 페이지
-                    // (한국어 윈도우는 CP949)로 받는데 프롬프트는 UTF-8로 토큰화하므로 글자가 깨진다.
-                ];
+                let args = whisper_args(model, wav, "ko");
                 run(&program, &args, STT_TIMEOUT).map(|o| o.stdout)
             };
             let notify = |id: &str, status: &str| {

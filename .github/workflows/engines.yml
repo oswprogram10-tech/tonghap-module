@@ -1,0 +1,104 @@
+name: 엔진 통합 테스트
+
+# 앱이 쓰는 실제 인자·요청 본문으로 번들 엔진(whisper-cli, llama-bench, llama-server)이 도는지 확인한다.
+# 모델 내려받기와 추론에 시간이 걸려 평소 CI(ci.yml)와 분리했다. 설계: docs/design/12-windows-integration-tests.md
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 19 * * 0' # 매주 일요일 19:17 UTC
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  engines:
+    name: 엔진 통합 테스트(윈도우)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      # 테스트 모델(docs/design/12 표). 바꾸면 아래 SHA-256도 함께 바꾼다.
+      WHISPER_MODEL_URL: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin
+      WHISPER_MODEL_SHA256: 818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7
+      LLM_MODEL_URL: https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf
+      LLM_MODEL_SHA256: 9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      # llama.cpp·whisper.cpp 윈도우 실행 파일 (버전은 src-tauri/engines.json)
+      - run: npm run fetch:engines
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Rust가 컴파일할 때 dist/를 요구한다.
+      - run: npm run build
+
+      - name: 테스트 모델 캐시
+        id: models-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\engine-test-models
+          key: engine-test-models-${{ env.WHISPER_MODEL_SHA256 }}-${{ env.LLM_MODEL_SHA256 }}
+
+      - name: 테스트 모델 내려받기(재시도, SHA-256 확인)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'engine-test-models'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+          function Get-Model([string]$Url, [string]$Sha, [string]$Name) {
+            $path = Join-Path $dir $Name
+            if (Test-Path $path) {
+              if ((Get-FileHash -Algorithm SHA256 $path).Hash.ToLower() -eq $Sha) { Write-Host "캐시 사용: $Name"; return }
+              Write-Host "캐시 파일의 SHA-256이 달라 다시 받습니다: $Name"
+              Remove-Item -Force $path
+            }
+            for ($i = 1; $i -le 5; $i++) {
+              try {
+                Write-Host "내려받기 ($i/5): $Url"
+                Invoke-WebRequest -Uri $Url -OutFile $path -UseBasicParsing -TimeoutSec 1800
+                $actual = (Get-FileHash -Algorithm SHA256 $path).Hash.ToLower()
+                if ($actual -eq $Sha) { Write-Host "확인 완료: $Name"; return }
+                Write-Host "SHA-256 불일치: $actual (기대 $Sha)"
+              } catch {
+                Write-Host "실패: $($_.Exception.Message)"
+              }
+              Remove-Item -Force -ErrorAction SilentlyContinue $path
+              Start-Sleep -Seconds (10 * $i)
+            }
+            throw "모델을 받지 못했습니다: $Name"
+          }
+
+          Get-Model $env:WHISPER_MODEL_URL $env:WHISPER_MODEL_SHA256 'ggml-tiny-q5_1.bin'
+          Get-Model $env:LLM_MODEL_URL $env:LLM_MODEL_SHA256 'Qwen3-0.6B-Q8_0.gguf'
+
+          # 테스트가 읽는 환경 변수(절대 경로)
+          $ws = $env:GITHUB_WORKSPACE
+          $logs = Join-Path $env:RUNNER_TEMP 'engine-logs'
+          New-Item -ItemType Directory -Force -Path $logs | Out-Null
+          Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_ENGINES_DIR=$(Join-Path $ws 'src-tauri\resources\engines')"
+          Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_TEST_WHISPER_MODEL=$(Join-Path $dir 'ggml-tiny-q5_1.bin')"
+          Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_TEST_LLM_MODEL=$(Join-Path $dir 'Qwen3-0.6B-Q8_0.gguf')"
+          Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_TEST_LOG_DIR=$logs"
+          Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_REQUIRE_ENGINES=1"
+
+      - name: 엔진 통합 테스트
+        run: cargo test --manifest-path src-tauri/Cargo.toml --test engines -- --ignored --nocapture --test-threads=1
+
+      - name: 엔진 로그 올리기
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-logs
+          path: ${{ runner.temp }}\engine-logs
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,75 @@
+name: 화면 E2E (윈도우)
+
+# 실제 윈도우의 WebView2에서 앱을 띄워 주요 흐름을 누른다(설계 12 · 2).
+# 평소 커밋마다 도는 ci.yml과 분리: 수동 실행, 주 1회, v* 태그에서만 돈다.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 19 * * 0'
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # cargo install --locked 로 고정하는 tauri-driver 버전
+  TAURI_DRIVER_VERSION: 2.1.0
+
+jobs:
+  e2e:
+    name: 윈도우 화면 E2E
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+
+      # tauri-driver: 버전을 고정해 설치하고, 설치한 실행 파일은 캐시한다.
+      - name: tauri-driver 캐시
+        id: driver-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/tauri-driver.exe
+          key: tauri-driver-${{ runner.os }}-${{ env.TAURI_DRIVER_VERSION }}
+      - name: tauri-driver 설치
+        if: steps.driver-cache.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --locked --version ${{ env.TAURI_DRIVER_VERSION }}
+      - run: tauri-driver --help
+
+      # WebView2와 같은 주 버전의 msedgedriver (러너에 있는 것이 맞으면 그대로, 아니면 내려받기)
+      - name: msedgedriver 준비
+        shell: pwsh
+        run: ./e2e/scripts/setup-msedgedriver.ps1
+
+      # 앱: 설치 파일 없이 실행 파일만 만든다(디버그 빌드, 화면 파일 포함).
+      # 점검 엔진은 필요 없다(기기 점검은 엔진이 없으면 「없음」으로 표시한다).
+      - run: npm run build
+      - run: npx tauri build --debug --no-bundle
+
+      - name: 화면 E2E 실행
+        run: npm run e2e
+        env:
+          TONGHAP_E2E_APP: ${{ github.workspace }}\src-tauri\target\debug\tonghap-module.exe
+          TAURI_DRIVER_PATH: tauri-driver
+
+      - name: 실패 스크린숏 올리기
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-screenshots
+          path: e2e/out/
+          if-no-files-found: ignore
+          retention-days: 14

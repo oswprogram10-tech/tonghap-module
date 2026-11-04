@@ -13,3 +13,5 @@ src-tauri/resources/engines/
 # 워커용 git worktree
 .claude/worktrees/
 ml/out/
+# 화면 E2E 실패 스크린숏
+e2e/out/
