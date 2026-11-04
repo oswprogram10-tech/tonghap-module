@@ -225,6 +225,12 @@ CREATE TABLE custom_activities (
 
 ALTER TABLE unit_sessions ADD COLUMN activity_id TEXT;
 "#,
+    // 8: 1년치 성능. attachments에는 observation_id 인덱스가 없어, 관찰마다 첨부를 찾는 쿼리가
+    // (기록 찾기의 자막 검색, `observations::get`의 첨부 목록 -> 기록 목록·리포트·평어 근거 묶음) 첨부 전체를 훑었다.
+    // 첨부 1,500개·관찰 3,000건에서 검색어 + 기간 개수가 150ms를 넘었다(EXPLAIN QUERY PLAN의 `SCAN a`).
+    r#"
+CREATE INDEX idx_attachments_observation ON attachments(observation_id);
+"#,
 ];
 
 pub fn latest_version() -> i64 {
@@ -261,7 +267,7 @@ mod tests {
         apply(&conn).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, latest_version());
-        assert_eq!(v, 7);
+        assert_eq!(v, 8);
         for table in [
             "classes", "students", "observations", "observation_students", "observation_standards", "observation_tags", "attachments", "settings",
             "units", "unit_stages", "unit_sessions", "unit_session_standards", "custom_plays", "play_log", "habits", "habit_checks", "parent_reports",
@@ -422,7 +428,7 @@ mod tests {
              INSERT INTO unit_sessions (id, unit_id, stage_id, position, title, created_at, updated_at) VALUES ('s', 'u', 'g', 0, '옛 차시', 't', 't');",
         )
         .unwrap();
-        apply(&conn).unwrap();
+        apply_up_to(&conn, 7).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, 7);
         let (title, activity): (String, Option<String>) =
@@ -430,5 +436,29 @@ mod tests {
         assert_eq!((title.as_str(), activity), ("옛 차시", None));
         conn.execute("INSERT INTO custom_activities (id, data, created_at, updated_at) VALUES ('custom-1', '{}', 't', 't')", []).unwrap();
         assert!(conn.execute("INSERT INTO custom_activities (id, data, created_at, updated_at) VALUES ('custom-1', '{}', 't', 't')", []).is_err());
+    }
+
+    #[test]
+    fn migration_8_keeps_version_7_data_and_indexes_attachments_by_observation() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        apply_up_to(&conn, 7).unwrap();
+        conn.execute_batch(
+            "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c', 2027, 1, '1반', 't');
+             INSERT INTO observations (id, class_id, observed_at, note, created_at, updated_at) VALUES ('o', 'c', '2027-03-04T10:00:00+09:00', '옛 기록', 't', 't');
+             INSERT INTO attachments (id, observation_id, kind, rel_path, mime, bytes, created_at) VALUES ('a', 'o', 'photo', '2027/03/a.png', 'image/png', 3, 't');",
+        )
+        .unwrap();
+        apply(&conn).unwrap();
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, latest_version());
+        assert_eq!(latest_version(), 8);
+        let n: i64 = conn.query_row("SELECT count(*) FROM attachments WHERE observation_id = 'o'", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        // 인덱스를 실제로 쓴다(전체 훑기 `SCAN a`가 아니다).
+        let plan: String = conn
+            .query_row("EXPLAIN QUERY PLAN SELECT id FROM attachments WHERE observation_id = 'o'", [], |r| r.get(3))
+            .unwrap();
+        assert!(plan.contains("idx_attachments_observation"), "{plan}");
     }
 }

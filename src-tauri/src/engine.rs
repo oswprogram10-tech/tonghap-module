@@ -91,6 +91,7 @@ pub fn run(program: &Path, args: &[String], timeout: Duration) -> Result<RunOutp
         if started.elapsed() > timeout {
             let _ = child.kill();
             let _ = child.wait();
+            crate::logging::error("engine", &format!("{} 시간 초과({}초)로 중단", program_name(program), timeout.as_secs()));
             return Err(format!("{}초 안에 끝나지 않아 중단했습니다", timeout.as_secs()));
         }
         std::thread::sleep(Duration::from_millis(200));
@@ -101,6 +102,7 @@ pub fn run(program: &Path, args: &[String], timeout: Duration) -> Result<RunOutp
 
     if !status.success() {
         let code = status.code().map_or_else(|| "알 수 없음".to_string(), |c| c.to_string());
+        crate::logging::error("engine", &format!("{} 실행 실패: 종료 코드 {code} / {}", program_name(program), tail(&stderr, 400)));
         return Err(format!("종료 코드 {code}\n{}", tail(&stderr, 1500)));
     }
     Ok(RunOutput { stdout, stderr, elapsed })
@@ -175,6 +177,11 @@ pub fn attach_to_app_job(child: &std::process::Child) {
     }
     #[cfg(not(windows))]
     let _ = child;
+}
+
+/// 로그에는 엔진 파일 이름만 남긴다(경로의 사용자 이름을 피하기 위해).
+fn program_name(program: &Path) -> String {
+    program.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
 pub fn tail(s: &str, max_chars: usize) -> String {

@@ -4,8 +4,10 @@ mod db;
 mod diag;
 mod engine;
 mod llm_server;
+mod logging;
 mod paths;
 mod stt;
+mod support;
 mod webdriver;
 #[doc(hidden)]
 pub mod testing;
@@ -31,16 +33,31 @@ fn app_info(app: tauri::AppHandle) -> AppInfo {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    logging::install_panic_hook();
     tauri::Builder::default()
         .setup(|app| {
             use tauri::Manager;
             let local = paths::local_data_dir(app.handle())?;
+            logging::init(local.join("logs"));
+            logging::info(
+                "app",
+                &format!(
+                    "시작: 앱 v{} / {}",
+                    app.package_info().version,
+                    sysinfo::System::long_os_version().unwrap_or_else(|_| std::env::consts::OS.to_string())
+                ),
+            );
             // 테스트용 폴더를 쓰면 설정 파일의 asset 범위($APPLOCALDATA)가 맞지 않으므로 사진 폴더를 따로 허용한다.
             if cfg!(debug_assertions) && std::env::var_os(paths::DATA_DIR_ENV).is_some_and(|v| !v.is_empty()) {
                 let _ = app.asset_protocol_scope().allow_directory(local.join("data").join("media"), true);
             }
             let data_dir = local.join("data");
-            let (conn, media) = db::open(&data_dir)?;
+            let (conn, media) = logging::log_err("db", "데이터베이스 열기", db::open(&data_dir))?;
+            logging::info(
+                "db",
+                &format!("DB 스키마 v{} (최신 v{})", support::read_schema_version(&conn).unwrap_or(-1), db::migrations::latest_version()),
+            );
+            logging::refresh_names(&conn);
             app.manage(std::sync::Mutex::new(conn));
             app.manage(media);
             stt::start(app.handle())?;
@@ -57,6 +74,9 @@ pub fn run() {
             webdriver::board_open_with_overrides,
             webdriver::e2e_dialog_next,
             about::about_storage,
+            logging::log_frontend_error,
+            support::support_preview,
+            support::support_create,
             diag::system::diag_system,
             diag::bench::diag_engines,
             diag::download::diag_models,
@@ -142,6 +162,7 @@ pub fn run() {
             backup::backup_inspect,
             backup::backup_restore,
             backup::backup_status,
+            db::testing::dev_seed_year,
         ])
         .build(tauri::generate_context!())
         .expect("앱 실행 중 오류")
@@ -149,6 +170,7 @@ pub fn run() {
             // 앱이 끝나면 언어 모델 서버(llama-server)도 함께 끈다.
             if let tauri::RunEvent::Exit = event {
                 use tauri::Manager;
+                logging::info("app", "종료");
                 if let Some(server) = app.try_state::<std::sync::Arc<llm_server::LlmServer>>() {
                     server.shutdown();
                 }

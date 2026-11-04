@@ -101,6 +101,36 @@ pub struct BackupProgress {
     pub total: u64,
 }
 
+/// 화면으로 보내는 진행률 이벤트의 최소 간격. 작은 첨부 파일이 수천 개여도 화면이 버벅이지 않게 한다.
+pub const PROGRESS_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// 진행률 이벤트를 `min` 간격으로 솎는다. 단계가 바뀔 때와 단계가 끝날 때(`done >= total`)는 항상 통과시킨다.
+pub struct Throttle {
+    min: std::time::Duration,
+    last: Option<(std::time::Instant, &'static str)>,
+}
+
+impl Throttle {
+    pub fn new(min: std::time::Duration) -> Self {
+        Self { min, last: None }
+    }
+
+    pub fn pass(&mut self, p: &BackupProgress) -> bool {
+        self.pass_at(p, std::time::Instant::now())
+    }
+
+    pub fn pass_at(&mut self, p: &BackupProgress, now: std::time::Instant) -> bool {
+        let ok = match self.last {
+            None => true,
+            Some((t, stage)) => stage != p.stage || p.done >= p.total || now.saturating_duration_since(t) >= self.min,
+        };
+        if ok {
+            self.last = Some((now, p.stage));
+        }
+        ok
+    }
+}
+
 pub fn progress(stage: &'static str, done: u64, total: u64) -> BackupProgress {
     BackupProgress { stage, done, total }
 }
@@ -189,6 +219,14 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> DbResult<T> + Send + 's
         .map_err(|e| format!("작업이 중단되었습니다: {e}"))?
 }
 
+/// 백업·복원 결과를 오류 기록에 남긴다(경로·암호는 남기지 않는다).
+fn log_backup_result<T>(what: &str, result: &DbResult<T>) {
+    match result {
+        Ok(_) => crate::logging::info("backup", &format!("{what} 완료")),
+        Err(e) => crate::logging::error("backup", &format!("{what} 실패: {e}")),
+    }
+}
+
 #[tauri::command]
 pub async fn backup_create(app: AppHandle, path: String, password: String, on_progress: Channel<BackupProgress>) -> DbResult<BackupResult> {
     let _busy = BusyGuard::acquire()?;
@@ -197,13 +235,19 @@ pub async fn backup_create(app: AppHandle, path: String, password: String, on_pr
     if out.extension().is_none() {
         out.set_extension("tonghap");
     }
-    blocking(move || {
+    crate::logging::info("backup", "백업 만들기 시작");
+    let result = blocking(move || {
         let db = app.state::<Mutex<Connection>>();
+        let mut throttle = Throttle::new(PROGRESS_MIN_INTERVAL);
         format::create(&db, &dir, &out, &password, None, &mut |p| {
-            let _ = on_progress.send(p);
+            if throttle.pass(&p) {
+                let _ = on_progress.send(p);
+            }
         })
     })
-    .await
+    .await;
+    log_backup_result("백업 만들기", &result);
+    result
 }
 
 #[tauri::command]
@@ -215,13 +259,19 @@ pub async fn backup_inspect(path: String, password: String) -> DbResult<BackupSu
 pub async fn backup_restore(app: AppHandle, path: String, password: String, on_progress: Channel<BackupProgress>) -> DbResult<BackupSummary> {
     let _busy = BusyGuard::acquire()?;
     let dir = data_dir(&app)?;
-    blocking(move || {
+    crate::logging::info("backup", "백업 복원 시작");
+    let result = blocking(move || {
         let db = app.state::<Mutex<Connection>>();
+        let mut throttle = Throttle::new(PROGRESS_MIN_INTERVAL);
         restore::restore(&db, &dir, Path::new(&path), &password, &mut |p| {
-            let _ = on_progress.send(p);
+            if throttle.pass(&p) {
+                let _ = on_progress.send(p);
+            }
         })
     })
-    .await
+    .await;
+    log_backup_result("백업 복원", &result);
+    result
 }
 
 #[tauri::command]

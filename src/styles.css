@@ -2352,3 +2352,26 @@ button {
     display: block;
   }
 }
+
+/* 문의용 진단 파일 · 화면 오류 경계 */
+.support-list {
+  margin: 0 0 12px;
+  padding-left: 22px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.error-boundary {
+  margin: 0 auto;
+}
+
+.error-details {
+  margin: 12px 0;
+}
+
+.error-details summary {
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}

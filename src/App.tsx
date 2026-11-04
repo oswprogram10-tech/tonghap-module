@@ -7,6 +7,7 @@ import type { TopicBook, Verification } from './curriculum/types';
 import AboutView from './about/AboutView';
 import BackupView from './backup/BackupView';
 import DiagView from './diag/DiagView';
+import ErrorBoundary from './support/ErrorBoundary';
 import EvalView from './evaluation/EvalView';
 import PortfolioView from './records/PortfolioView';
 import RecordView from './records/RecordView';
@@ -90,49 +91,47 @@ export default function App() {
       </header>
       {boardError && <p className="diag-error">칠판 창을 열 수 없습니다: {boardError}</p>}
 
-      {view === 'record' ? (
-        <RecordView key={dataKey} onGoBackup={() => setView('backup')} />
-      ) : view === 'portfolio' ? (
-        <PortfolioView key={dataKey} />
-      ) : view === 'eval' ? (
-        <EvalView key={dataKey} />
-      ) : view === 'units' ? (
-        <UnitsView key={dataKey} />
-      ) : view === 'topics' ? (
-        <main className="topics-layout">
-          <aside className="semesters" aria-label="학기 선택">
-            {SEMESTERS.map((s, idx) => (
-              <button
-                key={`${s.grade}-${s.semester}`}
-                className={idx === semesterIdx ? 'semester active' : 'semester'}
-                onClick={() => selectSemester(idx)}
-              >
-                {s.grade}학년 {s.semester}학기
-              </button>
-            ))}
-          </aside>
-          <section className="topic-list" aria-label="주제책">
-            {topics.map((t) => (
-              <button
-                key={t.id}
-                className={t.id === topic.id ? 'topic-card active' : 'topic-card'}
-                onClick={() => setTopicId(t.id)}
-              >
-                <span className="topic-order">{t.order}</span>
-                <span className="topic-title">{t.title}</span>
-                <span className="topic-meta">{t.sessions}차시</span>
-              </button>
-            ))}
-          </section>
-          <TopicDetail topic={topic} />
-        </main>
-      ) : view === 'backup' ? (
-        <BackupView onRestored={() => setDataKey((k) => k + 1)} />
-      ) : view === 'about' ? (
-        <AboutView onGoBackup={() => setView('backup')} />
-      ) : (
-        <DiagView />
-      )}
+      <ErrorBoundary key={view} name={view}>
+        {view === 'record' ? (
+          <RecordView key={dataKey} onGoBackup={() => setView('backup')} />
+        ) : view === 'portfolio' ? (
+          <PortfolioView key={dataKey} />
+        ) : view === 'eval' ? (
+          <EvalView key={dataKey} />
+        ) : view === 'units' ? (
+          <UnitsView key={dataKey} />
+        ) : view === 'topics' ? (
+          <main className="topics-layout">
+            <aside className="semesters" aria-label="학기 선택">
+              {SEMESTERS.map((s, idx) => (
+                <button
+                  key={`${s.grade}-${s.semester}`}
+                  className={idx === semesterIdx ? 'semester active' : 'semester'}
+                  onClick={() => selectSemester(idx)}
+                >
+                  {s.grade}학년 {s.semester}학기
+                </button>
+              ))}
+            </aside>
+            <section className="topic-list" aria-label="주제책">
+              {topics.map((t) => (
+                <button key={t.id} className={t.id === topic.id ? 'topic-card active' : 'topic-card'} onClick={() => setTopicId(t.id)}>
+                  <span className="topic-order">{t.order}</span>
+                  <span className="topic-title">{t.title}</span>
+                  <span className="topic-meta">{t.sessions}차시</span>
+                </button>
+              ))}
+            </section>
+            <TopicDetail topic={topic} />
+          </main>
+        ) : view === 'backup' ? (
+          <BackupView onRestored={() => setDataKey((k) => k + 1)} />
+        ) : view === 'about' ? (
+          <AboutView onGoBackup={() => setView('backup')} />
+        ) : (
+          <DiagView />
+        )}
+      </ErrorBoundary>
 
       <footer className="app-footer">
         <span>
@@ -181,8 +180,7 @@ function TopicDetail({ topic }: { topic: TopicBook }) {
 
       <h3>필수 편성</h3>
       <p>
-        안전 더하기 {required.safetySessions}차시 · 놀이 {required.playSessionsMin}차시 이상 · 메이킹북{' '}
-        {required.makingBookSessions}차시
+        안전 더하기 {required.safetySessions}차시 · 놀이 {required.playSessionsMin}차시 이상 · 메이킹북 {required.makingBookSessions}차시
       </p>
     </article>
   );

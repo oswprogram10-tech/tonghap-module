@@ -591,3 +591,26 @@ fn restoring_a_version_6_backup_migrates_it_to_the_activity_schema() {
     let custom: i64 = conn.query_row("SELECT count(*) FROM custom_activities", [], |r| r.get(0)).unwrap();
     assert_eq!(custom, 0);
 }
+
+#[test]
+fn throttle_thins_progress_but_keeps_stage_changes_and_ends() {
+    use std::time::{Duration, Instant};
+    let mut t = Throttle::new(PROGRESS_MIN_INTERVAL);
+    let t0 = Instant::now();
+    let at = |ms: u64| t0 + Duration::from_millis(ms);
+    assert!(t.pass_at(&progress("hashing", 1, 100), at(0)), "첫 이벤트는 통과");
+    assert!(!t.pass_at(&progress("hashing", 2, 100), at(10)));
+    assert!(!t.pass_at(&progress("hashing", 3, 100), at(99)));
+    assert!(t.pass_at(&progress("hashing", 4, 100), at(100)), "100ms가 지나면 통과");
+    assert!(!t.pass_at(&progress("hashing", 5, 100), at(150)));
+    assert!(t.pass_at(&progress("hashing", 100, 100), at(151)), "단계가 끝나는 이벤트는 항상 통과");
+    assert!(t.pass_at(&progress("writing", 0, 50), at(152)), "단계가 바뀌면 통과");
+    // 1,500개 파일이 몇 ms 안에 쏟아져도 이벤트는 몇 개만 남는다.
+    let mut passed = 0;
+    for i in 0..1500u64 {
+        if t.pass_at(&progress("writing", i, 5000), at(200 + i / 10)) {
+            passed += 1;
+        }
+    }
+    assert!(passed <= 3, "통과 {passed}개");
+}

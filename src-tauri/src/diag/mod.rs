@@ -8,7 +8,7 @@
 pub mod bench;
 pub mod download;
 pub mod system;
-mod vulkan;
+pub(crate) mod vulkan;
 
 use std::path::PathBuf;
 

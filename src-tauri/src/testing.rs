@@ -9,3 +9,11 @@ pub use crate::engine::{engine_in, run, tail};
 pub use crate::llm_server::{chat_once, completion_content, LlmServer};
 pub use crate::stt::{clean_transcript, validate_wav, whisper_args, STT_TIMEOUT};
 pub use crate::llm_server::{http, LlmError};
+
+// 성능 점검(`src-tauri/tests/perf.rs`)이 쓰는 통로. 설계: docs/design/16-year-scale-performance.md
+pub use crate::backup::format as backup_format;
+pub use crate::backup::{BackupProgress, Throttle, PROGRESS_MIN_INTERVAL};
+pub use crate::db::testing::{seed_year, SeedOpts, SeedSummary};
+pub use crate::db::{activities, habits, migrations, observations, portfolio, prepare, reports, units};
+pub use crate::db::evaluation::bundle::build as evidence_bundle;
+pub use crate::stt::reset_pending;

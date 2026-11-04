@@ -14,6 +14,7 @@ pub mod portfolio;
 pub mod reports;
 pub mod settings;
 pub mod students;
+pub mod testing;
 pub mod units;
 
 use std::path::{Path, PathBuf};
