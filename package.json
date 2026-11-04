@@ -1,7 +1,7 @@
 {
   "name": "tonghap-module",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.11.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,8 +9,9 @@
     "typecheck": "tsc --noEmit",
     "validate:data": "node scripts/validate-curriculum.mjs && node scripts/validate-plays.mjs && node scripts/validate-evaluation.mjs && node scripts/validate-synthetic.mjs && node scripts/validate-activities.mjs",
     "tauri": "tauri",
+    "licenses": "node scripts/collect-licenses.mjs",
     "fetch:engines": "node scripts/fetch-engines.mjs",
-    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test ml/synth/generate-bundles.test.mjs src/board/random.test.mjs src/stt/wav.test.mjs"
+    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test ml/synth/generate-bundles.test.mjs src/board/random.test.mjs src/stt/wav.test.mjs scripts/collect-licenses.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

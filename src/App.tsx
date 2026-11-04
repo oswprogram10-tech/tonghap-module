@@ -4,6 +4,7 @@ import { errorText } from './records/api';
 import { openBoardWindow } from './board/window';
 import { SEMESTERS, areaOf, curriculum, standardsOf, topicsOf } from './curriculum';
 import type { TopicBook, Verification } from './curriculum/types';
+import AboutView from './about/AboutView';
 import BackupView from './backup/BackupView';
 import DiagView from './diag/DiagView';
 import EvalView from './evaluation/EvalView';
@@ -17,7 +18,7 @@ interface AppInfo {
   arch: string;
 }
 
-type View = 'record' | 'portfolio' | 'eval' | 'units' | 'topics' | 'diag' | 'backup';
+type View = 'record' | 'portfolio' | 'eval' | 'units' | 'topics' | 'diag' | 'backup' | 'about';
 
 const VERIFICATION_LABEL: Record<Verification, string> = {
   'unverified-spec': '원문 확인 필요',
@@ -68,6 +69,9 @@ export default function App() {
           </button>
           <button className={view === 'backup' ? 'tab active' : 'tab'} onClick={() => setView('backup')}>
             백업
+          </button>
+          <button className={view === 'about' ? 'tab active' : 'tab'} onClick={() => setView('about')}>
+            정보
           </button>
         </nav>
         {isTauri() && (
@@ -124,6 +128,8 @@ export default function App() {
         </main>
       ) : view === 'backup' ? (
         <BackupView onRestored={() => setDataKey((k) => k + 1)} />
+      ) : view === 'about' ? (
+        <AboutView onGoBackup={() => setView('backup')} />
       ) : (
         <DiagView />
       )}

@@ -2137,3 +2137,83 @@ button {
   display: grid;
   gap: 4px;
 }
+
+/* 정보 화면 */
+.about h3 {
+  margin: 16px 0 8px;
+  font-size: 18px;
+}
+
+.about-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 20px;
+  margin: 8px 0;
+}
+
+.about-list dt {
+  color: var(--muted);
+}
+
+.about-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.about-steps {
+  margin: 8px 0;
+  padding-left: 24px;
+  line-height: 1.6;
+}
+
+.md h4,
+.md h5,
+.md h6 {
+  margin: 16px 0 8px;
+}
+
+.md p {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+
+.md pre {
+  margin: 8px 0;
+  padding: 12px 16px;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.md-table {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 8px 0;
+}
+
+.md-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.md-table th,
+.md-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.md-table th {
+  position: sticky;
+  top: 0;
+  background: var(--accent-soft);
+}

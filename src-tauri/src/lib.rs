@@ -1,3 +1,4 @@
+mod about;
 mod backup;
 mod db;
 mod diag;
@@ -41,6 +42,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             app_info,
+            about::about_storage,
             diag::system::diag_system,
             diag::bench::diag_engines,
             diag::download::diag_models,
