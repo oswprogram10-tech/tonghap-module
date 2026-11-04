@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "자막 정확도 평가 묶음 manifest",
+  "type": "object",
+  "required": ["name", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "consent": { "type": "string", "description": "보호자 동의 기록(예: 보호자 동의 받음(2027-03))" },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "wav", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+          "wav": { "type": "string", "minLength": 1, "description": "manifest.json 기준 상대 경로. 16kHz 모노 16비트" },
+          "text": { "type": "string", "description": "사람이 받아 적은 기준 문장" },
+          "lang": { "type": "string", "pattern": "^[a-z]{2}$", "description": "기본값 ko. 영어 샘플은 en" },
+          "speaker": { "type": "string", "description": "익명 기호(child-1 등). 이름 금지" },
+          "tags": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    }
+  }
+}

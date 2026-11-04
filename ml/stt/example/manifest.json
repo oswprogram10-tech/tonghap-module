@@ -1,0 +1,8 @@
+{
+  "name": "형식 예시(음성 없음)",
+  "consent": "예시이므로 해당 없음",
+  "items": [
+    { "id": "a01", "wav": "a01.wav", "text": "개미가 줄을 서서 가요", "speaker": "child-1", "tags": ["교실소음"] },
+    { "id": "a02", "wav": "a02.wav", "text": "나는 봄이 좋아요", "speaker": "child-2", "tags": ["조용한방"] }
+  ]
+}

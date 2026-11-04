@@ -128,22 +128,29 @@ pub fn whisper_threads() -> usize {
         .clamp(1, 8)
 }
 
+/// whisper-cli 인자 틀. `{model}`·`{wav}`·`{lang}`·`{threads}` 자리에 값을 채운다.
+/// `ml/stt/whisper-args.json`(자막 정확도 측정 도구가 읽음)과 같아야 하며 테스트가 확인한다.
+/// --prompt(한국어 안내문)는 넣지 않는다. whisper-cli는 윈도우에서 인자를 시스템 코드 페이지
+/// (한국어 윈도우는 CP949)로 받는데 프롬프트는 UTF-8로 토큰화하므로 글자가 깨진다.
+pub const WHISPER_ARGS: &[&str] = &["-m", "{model}", "-f", "{wav}", "-l", "{lang}", "-t", "{threads}", "-nt", "-np"];
+
+/// 인자 틀에 값을 채운다.
+pub fn whisper_args_with(model: &Path, wav: &Path, lang: &str, threads: usize) -> Vec<String> {
+    WHISPER_ARGS
+        .iter()
+        .map(|a| match *a {
+            "{model}" => model.to_string_lossy().into_owned(),
+            "{wav}" => wav.to_string_lossy().into_owned(),
+            "{lang}" => lang.to_string(),
+            "{threads}" => threads.to_string(),
+            other => other.to_string(),
+        })
+        .collect()
+}
+
 /// whisper-cli 인자. 앱의 자막은 `lang`을 `ko`로 부른다(엔진 통합 테스트도 같은 함수를 쓴다).
 pub fn whisper_args(model: &Path, wav: &Path, lang: &str) -> Vec<String> {
-    vec![
-        "-m".into(),
-        model.to_string_lossy().into_owned(),
-        "-f".into(),
-        wav.to_string_lossy().into_owned(),
-        "-l".into(),
-        lang.into(),
-        "-t".into(),
-        whisper_threads().to_string(),
-        "-nt".into(),
-        "-np".into(),
-        // --prompt(한국어 안내문)는 넣지 않는다. whisper-cli는 윈도우에서 인자를 시스템 코드 페이지
-        // (한국어 윈도우는 CP949)로 받는데 프롬프트는 UTF-8로 토큰화하므로 글자가 깨진다.
-    ]
+    whisper_args_with(model, wav, lang, whisper_threads())
 }
 
 // ---------- 설정 ----------
@@ -422,6 +429,27 @@ mod tests {
     use crate::db::new_id;
     use crate::db::observations::tests::seed;
     use std::cell::RefCell;
+
+    /// 측정 도구(ml/stt)가 읽는 인자 파일이 상수와 같은지 확인한다.
+    /// 상수를 바꿨다면 `TONGHAP_WRITE_WHISPER_ARGS=1 cargo test whisper_args_json`로 다시 쓴다.
+    #[test]
+    fn whisper_args_json_matches_const() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../ml/stt/whisper-args.json");
+        let expected = serde_json::json!({ "args": WHISPER_ARGS });
+        if std::env::var("TONGHAP_WRITE_WHISPER_ARGS").is_ok() {
+            std::fs::write(&path, serde_json::to_string_pretty(&expected).unwrap() + "\n").unwrap();
+        }
+        let text = std::fs::read_to_string(&path).expect("ml/stt/whisper-args.json을 읽을 수 없음");
+        let actual: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(actual, expected, "whisper-args.json이 WHISPER_ARGS와 다름");
+    }
+
+    #[test]
+    fn whisper_args_fill_template_and_stay_ascii_free_of_prompt() {
+        let args = whisper_args_with(Path::new("m.bin"), Path::new("a.wav"), "ko", 3);
+        assert_eq!(args, ["-m", "m.bin", "-f", "a.wav", "-l", "ko", "-t", "3", "-nt", "-np"]);
+        assert!(WHISPER_ARGS.iter().all(|a| a.is_ascii() && *a != "--prompt"));
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("tonghap-stt-{}-{}", name, new_id()));

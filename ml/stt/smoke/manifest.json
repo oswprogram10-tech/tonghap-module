@@ -1,0 +1,14 @@
+{
+  "name": "CI 스모크(영어 jfk.wav)",
+  "consent": "공개 샘플이므로 해당 없음",
+  "items": [
+    {
+      "id": "jfk",
+      "wav": "../../../src-tauri/resources/samples/jfk.wav",
+      "text": "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country.",
+      "lang": "en",
+      "speaker": "sample",
+      "tags": ["영어"]
+    }
+  ]
+}

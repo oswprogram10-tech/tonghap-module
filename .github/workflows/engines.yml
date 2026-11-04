@@ -94,6 +94,17 @@ jobs:
       - name: 엔진 통합 테스트
         run: cargo test --manifest-path src-tauri/Cargo.toml --test engines -- --ignored --nocapture --test-threads=1
 
+      - name: 자막 정확도 측정 스모크
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node ml/stt/eval.mjs --set ml/stt/smoke `
+            --whisper "$env:TONGHAP_ENGINES_DIR\whisper\whisper-cli.exe" `
+            --model $env:TONGHAP_TEST_WHISPER_MODEL `
+            --out "$env:TONGHAP_TEST_LOG_DIR\stt-report" --max-cer 0.5
+          if ($LASTEXITCODE -ne 0) { throw "자막 정확도 측정 실패" }
+          if (-not (Get-ChildItem "$env:TONGHAP_TEST_LOG_DIR\stt-report\report-*.md")) { throw "보고서가 없습니다" }
+
       - name: 엔진 로그 올리기
         if: failure()
         uses: actions/upload-artifact@v4
