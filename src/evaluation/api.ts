@@ -11,7 +11,7 @@ export const SUBJECT_LIST: { code: SubjectCode; name: string }[] = [
 export type EvalStyle = 'ham' | 'eum' | 'boim';
 export const STYLE_LABEL: Record<EvalStyle, string> = { ham: '~함', eum: '~음 (하였음)', boim: '~하는 모습을 보임' };
 
-export const LEN_MIN = 150;
+export const LEN_MIN = 80;
 export const LEN_MAX = 400;
 export const MIN_EVIDENCE = 3;
 
@@ -84,6 +84,43 @@ export interface StudentRow {
   status: 'none' | 'draft' | 'confirmed';
 }
 
+export interface CombinedWarning {
+  code: 'forbidden' | 'otherName' | 'nounEnding' | 'symbol' | 'missingSubject';
+  message: string;
+}
+
+export interface CombinedCheck {
+  warnings: CombinedWarning[];
+  chars: number;
+  bytes: number;
+  lengthNotice: string | null;
+  canConfirm: boolean;
+}
+
+export interface CombinedKey {
+  studentId: string;
+  from: string;
+  to: string;
+}
+
+export interface CombinedView {
+  student: { id: string; number: number; name: string };
+  from: string;
+  to: string;
+  subjects: { code: SubjectCode; name: string; confirmed: boolean }[];
+  canCombine: boolean;
+  combined: { id: string; text: string; status: 'draft' | 'confirmed'; confirmedAt: string | null; updatedAt: string; stale: boolean } | null;
+  check: CombinedCheck | null;
+}
+
+export interface CombinedRow {
+  studentId: string;
+  status: 'none' | 'draft' | 'confirmed';
+  stale: boolean;
+}
+
+export type ExportFormat = 'combined' | 'bySubject';
+
 export interface EvalSettings {
   style: EvalStyle;
   targetChars: number;
@@ -138,7 +175,15 @@ export const evalApi = {
   save: (key: DraftKey, sentences: Sentence[]) => invoke<DraftView>('eval_save', { input: { ...key, sentences } }),
   check: (key: DraftKey, sentences: Sentence[]) => invoke<DraftCheck>('eval_check', { input: { ...key, sentences } }),
   confirm: (key: DraftKey) => invoke<DraftView>('eval_confirm', { key }),
-  exportTxt: (classId: string, from: string, to: string, path: string) => invoke<number>('eval_export', { classId, from, to, path }),
+  exportTxt: (classId: string, from: string, to: string, path: string, format: ExportFormat) =>
+    invoke<number>('eval_export', { classId, from, to, path, format }),
+  combinedView: (key: CombinedKey) => invoke<CombinedView>('eval_combined_view', { key }),
+  combinedStatus: (classId: string, from: string, to: string) => invoke<Record<string, CombinedRow>>('eval_combined_status', { classId, from, to }),
+  combine: (key: CombinedKey, overwrite: boolean) => invoke<CombinedView>('eval_combine', { input: { ...key, overwrite } }),
+  combinedSave: (id: string, text: string) => invoke<CombinedView>('eval_combined_save', { id, text }),
+  combinedCheck: (key: CombinedKey, text: string) => invoke<CombinedCheck>('eval_combined_check', { input: { ...key, text } }),
+  combinedConfirm: (id: string) => invoke<CombinedView>('eval_combined_confirm', { id }),
+  combinedUnconfirm: (id: string) => invoke<CombinedView>('eval_combined_unconfirm', { id }),
 };
 
 export const joinSentences = (sentences: Sentence[]) => sentences.map((s) => s.text.trim()).filter(Boolean).join(' ');

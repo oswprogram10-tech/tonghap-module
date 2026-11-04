@@ -6,6 +6,7 @@
 
 pub mod bundle;
 pub mod check;
+pub mod combined;
 pub mod data;
 pub mod generate;
 pub mod llm;
@@ -30,7 +31,8 @@ pub const KEY_STYLE: &str = "evalStyle";
 pub const KEY_TARGET: &str = "evalTargetChars";
 pub const KEY_EXTRA: &str = "evalForbiddenExtra";
 pub const DEFAULT_STYLE: &str = "ham";
-pub const DEFAULT_TARGET: usize = 250;
+/// 교과별 목표 글자 수 기본값. 1~2학년은 세 교과를 통합해 쓰므로 세 교과를 합쳐 약 450자가 되도록 150으로 둔다.
+pub const DEFAULT_TARGET: usize = 150;
 const MAX_SENTENCES: usize = 12;
 const MAX_SENTENCE_CHARS: usize = 500;
 const MAX_EXTRA_WORDS: usize = 200;
@@ -454,11 +456,56 @@ pub fn eval_confirm(db: State<Mutex<Connection>>, media: State<MediaDir>, key: D
 }
 
 /// 학급 확정본을 고른 경로의 .txt로 저장하고 내보낸 개수를 돌려준다.
+/// `format`: `combined`(통합본, NEIS용, 기본) | `bySubject`(교과별).
 #[tauri::command]
-pub fn eval_export(db: State<Mutex<Connection>>, class_id: String, from: String, to: String, path: String) -> DbResult<usize> {
-    let (text, n) = export_text(&*lock(&db)?, &class_id, &from, &to)?;
+pub fn eval_export(db: State<Mutex<Connection>>, class_id: String, from: String, to: String, path: String, format: Option<String>) -> DbResult<usize> {
+    let conn = lock(&db)?;
+    let (text, n) = export_by_format(&conn, &class_id, &from, &to, format.as_deref())?;
     write_text_file(&path, &text)?;
     Ok(n)
+}
+
+pub fn export_by_format(conn: &Connection, class_id: &str, from: &str, to: &str, format: Option<&str>) -> DbResult<(String, usize)> {
+    match format.unwrap_or("combined") {
+        "combined" => combined::export_text(conn, class_id, from, to),
+        "bySubject" => export_text(conn, class_id, from, to),
+        _ => Err("내보내기 형식은 통합본 또는 교과별 중에서 골라 주세요".to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn eval_combined_view(db: State<Mutex<Connection>>, key: combined::CombinedKey) -> DbResult<combined::CombinedView> {
+    combined::view(&*lock(&db)?, &key)
+}
+
+#[tauri::command]
+pub fn eval_combined_status(db: State<Mutex<Connection>>, class_id: String, from: String, to: String) -> DbResult<HashMap<String, combined::CombinedRow>> {
+    combined::class_combined_status(&*lock(&db)?, &class_id, &from, &to)
+}
+
+#[tauri::command]
+pub fn eval_combine(db: State<Mutex<Connection>>, input: combined::CombineInput) -> DbResult<combined::CombinedView> {
+    combined::combine(&*lock(&db)?, &input)
+}
+
+#[tauri::command]
+pub fn eval_combined_save(db: State<Mutex<Connection>>, id: String, text: String) -> DbResult<combined::CombinedView> {
+    combined::save(&*lock(&db)?, &id, &text)
+}
+
+#[tauri::command]
+pub fn eval_combined_check(db: State<Mutex<Connection>>, input: combined::CombinedTextInput) -> DbResult<combined::CombinedCheck> {
+    combined::check(&*lock(&db)?, &input)
+}
+
+#[tauri::command]
+pub fn eval_combined_confirm(db: State<Mutex<Connection>>, id: String) -> DbResult<combined::CombinedView> {
+    combined::confirm(&*lock(&db)?, &id)
+}
+
+#[tauri::command]
+pub fn eval_combined_unconfirm(db: State<Mutex<Connection>>, id: String) -> DbResult<combined::CombinedView> {
+    combined::unconfirm(&*lock(&db)?, &id)
 }
 
 #[cfg(test)]

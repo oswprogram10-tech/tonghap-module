@@ -2375,3 +2375,49 @@ button {
   align-items: center;
   cursor: pointer;
 }
+
+.ev-combined {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 2px solid var(--line);
+}
+
+.ev-subjects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ev-subject {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.ev-subject-ok {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.ev-combined-text {
+  width: 100%;
+  min-height: 160px;
+}
+
+.ev-layout .rec-side {
+  flex-wrap: wrap;
+}
+
+.ev-layout .rec-side .ev-status {
+  margin-left: 0;
+  white-space: nowrap;
+}
+
+.ev-layout .rec-side .rec-count {
+  white-space: nowrap;
+}

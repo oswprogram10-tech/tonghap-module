@@ -342,9 +342,10 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
               </button>
             )}
             <button className="diag-primary" disabled={busy || status !== 'confirmed' || dirty} onClick={copy} title={status === 'confirmed' ? '' : '확정한 뒤에 복사할 수 있어요'}>
-              복사
+              이 교과만 복사
             </button>
           </div>
+          <p className="diag-hint">NEIS에는 통합본을 붙여 넣습니다(아래 「통합본」). 이 교과만 복사는 참고용입니다.</p>
           {status !== 'confirmed' && <p className="diag-hint">확정한 평어만 복사·내보내기를 할 수 있습니다.</p>}
         </div>
       </div>

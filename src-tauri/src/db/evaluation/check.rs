@@ -11,7 +11,7 @@ use super::data::{curriculum, templates, Forbidden};
 use super::generate::Sentence;
 
 /// 평어 전체 글자 수 허용 범위(설정의 목표 글자 수도 이 안에서 고른다).
-pub const LEN_MIN: usize = 150;
+pub const LEN_MIN: usize = 80;
 pub const LEN_MAX: usize = 400;
 
 pub const NO_EVIDENCE: &str = "noEvidence";

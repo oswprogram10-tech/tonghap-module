@@ -469,6 +469,36 @@ fn restoring_a_version_2_backup_migrates_it_to_the_board_schema() {
 }
 
 #[test]
+fn restoring_a_version_8_backup_adds_the_combined_evaluation_table_and_keeps_drafts() {
+    let src = tmp("v8").join("data");
+    std::fs::create_dir_all(src.join("media")).unwrap();
+    let v8 = Connection::open(src.join("tonghap.db")).unwrap();
+    crate::db::migrations::apply_up_to(&v8, 8).unwrap();
+    v8.execute_batch(
+        "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c1', 2027, 1, '1반', 't');
+         INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s1', 'c1', 1, '김하늘', 't');
+         INSERT INTO evaluation_drafts (id, class_id, student_id, subject, period_from, period_to, sentences, created_at, updated_at)
+           VALUES ('d1', 'c1', 's1', '슬', '2027-03-02', '2027-07-18', '[]', 't', 't');",
+    )
+    .unwrap();
+    let src_db = Mutex::new(v8);
+    let file = make_backup(&src_db, &src);
+    assert_eq!(inspect(&file, PW).unwrap().schema_version, 8);
+
+    let (target, tdb) = seeded("v8-target");
+    let sum = run_restore(&tdb, &target, &file, PW).unwrap();
+    assert_eq!(sum.schema_version, 8);
+
+    let conn = tdb.lock().unwrap();
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+    assert_eq!(version, crate::db::migrations::latest_version());
+    let drafts: i64 = conn.query_row("SELECT count(*) FROM evaluation_drafts", [], |r| r.get(0)).unwrap();
+    assert_eq!(drafts, 1);
+    let combined: i64 = conn.query_row("SELECT count(*) FROM evaluation_combined", [], |r| r.get(0)).unwrap();
+    assert_eq!(combined, 0);
+}
+
+#[test]
 fn restoring_a_version_3_backup_migrates_attachments_to_the_transcript_schema() {
     let src = tmp("v3").join("data");
     std::fs::create_dir_all(src.join("media")).unwrap();

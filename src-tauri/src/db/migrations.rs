@@ -231,6 +231,24 @@ ALTER TABLE unit_sessions ADD COLUMN activity_id TEXT;
     r#"
 CREATE INDEX idx_attachments_observation ON attachments(observation_id);
 "#,
+    // 9: 세 교과(바·슬·즐)를 합친 통합 평어. 1~2학년은 NEIS에 세 교과를 통합해 입력한다.
+    r#"
+CREATE TABLE evaluation_combined (
+  id TEXT PRIMARY KEY,
+  class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  student_id TEXT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  period_from TEXT NOT NULL,
+  period_to TEXT NOT NULL,
+  text TEXT NOT NULL,
+  source_hash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'confirmed')),
+  confirmed_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (student_id, period_from, period_to)
+);
+CREATE INDEX idx_evaluation_combined_class ON evaluation_combined(class_id);
+"#,
 ];
 
 pub fn latest_version() -> i64 {
@@ -267,11 +285,11 @@ mod tests {
         apply(&conn).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, latest_version());
-        assert_eq!(v, 8);
+        assert_eq!(v, 9);
         for table in [
             "classes", "students", "observations", "observation_students", "observation_standards", "observation_tags", "attachments", "settings",
             "units", "unit_stages", "unit_sessions", "unit_session_standards", "custom_plays", "play_log", "habits", "habit_checks", "parent_reports",
-            "evaluation_drafts", "custom_activities",
+            "evaluation_drafts", "custom_activities", "evaluation_combined",
         ] {
             let n: i64 = conn
                 .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0))
@@ -449,10 +467,9 @@ mod tests {
              INSERT INTO attachments (id, observation_id, kind, rel_path, mime, bytes, created_at) VALUES ('a', 'o', 'photo', '2027/03/a.png', 'image/png', 3, 't');",
         )
         .unwrap();
-        apply(&conn).unwrap();
+        apply_up_to(&conn, 8).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(v, latest_version());
-        assert_eq!(latest_version(), 8);
+        assert_eq!(v, 8);
         let n: i64 = conn.query_row("SELECT count(*) FROM attachments WHERE observation_id = 'o'", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 1);
         // 인덱스를 실제로 쓴다(전체 훑기 `SCAN a`가 아니다).
@@ -460,5 +477,34 @@ mod tests {
             .query_row("EXPLAIN QUERY PLAN SELECT id FROM attachments WHERE observation_id = 'o'", [], |r| r.get(3))
             .unwrap();
         assert!(plan.contains("idx_attachments_observation"), "{plan}");
+    }
+
+    #[test]
+    fn migration_9_keeps_version_8_data_and_adds_combined_evaluations() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        apply_up_to(&conn, 8).unwrap();
+        conn.execute_batch(
+            "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c', 2027, 1, '1반', 't');
+             INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s', 'c', 1, '김하늘', 't');
+             INSERT INTO evaluation_drafts (id, class_id, student_id, subject, period_from, period_to, sentences, created_at, updated_at)
+               VALUES ('d', 'c', 's', '슬', '2027-03-02', '2027-07-18', '[]', 't', 't');",
+        )
+        .unwrap();
+        apply(&conn).unwrap();
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, latest_version());
+        assert_eq!(latest_version(), 9);
+        let n: i64 = conn.query_row("SELECT count(*) FROM evaluation_drafts", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        let insert = "INSERT INTO evaluation_combined (id, class_id, student_id, period_from, period_to, text, source_hash, created_at, updated_at)
+                      VALUES (?1, 'c', 's', '2027-03-02', '2027-07-18', '글', 'h', 't', 't')";
+        conn.execute(insert, ["a"]).unwrap();
+        assert!(conn.execute(insert, ["b"]).is_err(), "같은 학생·기간은 하나만");
+        assert!(conn.execute("UPDATE evaluation_combined SET status = 'bogus' WHERE id = 'a'", []).is_err());
+        // 학생을 지우면 통합본도 함께 지워진다.
+        conn.execute("DELETE FROM students WHERE id = 's'", []).unwrap();
+        let n: i64 = conn.query_row("SELECT count(*) FROM evaluation_combined", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
     }
 }

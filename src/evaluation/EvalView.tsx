@@ -13,16 +13,20 @@ import {
   currentSemester,
   evalApi,
   semesterPeriod,
+  type CombinedRow,
   type EvalSettings,
   type EvalStyle,
+  type ExportFormat,
   type GeneratorChoice,
   type LlmStatus,
   type StudentRow,
   type SubjectCode,
 } from './api';
+import CombinedPanel from './CombinedPanel';
 import StudentDraft from './StudentDraft';
 
 const STATUS_LABEL = { none: '없음', draft: '초안', confirmed: '확정' } as const;
+const COMBINED_LABEL = { none: '없음', draft: '초안', confirmed: '확정' } as const;
 
 interface Batch {
   running: boolean;
@@ -56,6 +60,9 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
   const [choice, setChoice] = useState<GeneratorChoice | null>(null);
   const [batch, setBatch] = useState<Batch | null>(null);
   const [rev, setRev] = useState(0);
+  const [combinedRows, setCombinedRows] = useState<Record<string, CombinedRow>>({});
+  const [combinedTick, setCombinedTick] = useState(0);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('combined');
   const stopBatch = useRef(false);
   const batchRunning = useRef(false);
   const [info, setInfo] = useState<string | null>(null);
@@ -67,6 +74,8 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
     if (!periodOk) return;
     try {
       setRows(await evalApi.status(cls.id, subject, from, to));
+      setCombinedRows(await evalApi.combinedStatus(cls.id, from, to));
+      setCombinedTick((n) => n + 1);
       setError(null);
     } catch (e) {
       setError(errorText(e));
@@ -111,8 +120,8 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
         filters: [{ name: '텍스트 파일', extensions: ['txt'] }],
       });
       if (!path) return;
-      const n = await evalApi.exportTxt(cls.id, from, to, path);
-      setInfo(`확정된 평어 ${n}건을 저장했습니다: ${path}`);
+      const n = await evalApi.exportTxt(cls.id, from, to, path, exportFormat);
+      setInfo(`확정된 ${exportFormat === 'combined' ? '통합본' : '교과별 평어'} ${n}건을 저장했습니다: ${path}`);
     } catch (e) {
       setError(errorText(e));
     }
@@ -223,7 +232,6 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
               disabled={running}
               onClick={() => {
                 setSubject(s.code);
-                setSelected(null);
               }}
             >
               {s.name}
@@ -264,6 +272,14 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
         <button className="diag-secondary" onClick={() => setShowSettings((v) => !v)} aria-expanded={showSettings}>
           문체·금지 표현 설정
         </button>
+        <div className="rec-chips" role="group" aria-label="내보내기 형식">
+          <button className={exportFormat === 'combined' ? 'rec-chip on' : 'rec-chip'} aria-pressed={exportFormat === 'combined'} onClick={() => setExportFormat('combined')}>
+            통합본(NEIS용)
+          </button>
+          <button className={exportFormat === 'bySubject' ? 'rec-chip on' : 'rec-chip'} aria-pressed={exportFormat === 'bySubject'} onClick={() => setExportFormat('bySubject')}>
+            교과별
+          </button>
+        </div>
         <button className="diag-secondary" onClick={exportAll} disabled={!periodOk}>
           학급 확정본 내보내기 (.txt)
         </button>
@@ -309,13 +325,20 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
               <span className="rec-count" title="근거 개수">
                 근거 {r.evidenceCount}
               </span>
-              <span className={`ev-status ev-status-${r.status}`}>{STATUS_LABEL[r.status]}</span>
+              <span className={`ev-status ev-status-${r.status}`} title="이 교과 평어">
+                {STATUS_LABEL[r.status]}
+              </span>
+              <span className={`ev-status ev-status-${combinedRows[r.studentId]?.status ?? 'none'}`} title="통합본">
+                통합 {COMBINED_LABEL[combinedRows[r.studentId]?.status ?? 'none']}
+                {combinedRows[r.studentId]?.stale ? '·바뀜' : ''}
+              </span>
             </button>
           ))}
           {rows && rows.length > 0 && <p className="diag-hint">확정 {confirmedCount}/{rows.length}명 (이 교과)</p>}
         </aside>
         <div className="rec-main">
           {student && settings && periodOk ? (
+            <>
             <StudentDraft
               key={`${student.studentId}|${subject}|${from}|${to}|${rev}`}
               studentId={student.studentId}
@@ -327,6 +350,8 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
               locked={running}
               onChanged={reload}
             />
+            <CombinedPanel key={`c|${student.studentId}|${from}|${to}|${rev}`} studentId={student.studentId} from={from} to={to} refresh={combinedTick} onChanged={reload} />
+            </>
           ) : (
             <p className="diag-note">왼쪽에서 학생을 고르면 이 교과의 근거 기록과 평어 초안을 볼 수 있어요.</p>
           )}
@@ -409,7 +434,7 @@ function SettingsPanel({ settings, onSaved, onError }: { settings: EvalSettings;
         ))}
       </div>
       <label className="rec-field">
-        교과별 목표 글자 수 ({LEN_MIN}~{LEN_MAX})
+        교과별 목표 글자 수 ({LEN_MIN}~{LEN_MAX}, 세 교과를 합친 통합본은 약 3배)
         <input type="number" min={LEN_MIN} max={LEN_MAX} step={10} value={target} onChange={(e) => setTarget(e.target.value)} />
       </label>
       <label className="rec-field">

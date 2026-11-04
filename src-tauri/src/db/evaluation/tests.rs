@@ -521,13 +521,15 @@ fn check_warns_when_sentence_has_no_word_in_common_with_the_cited_evidence() {
 }
 
 #[test]
-fn check_warns_about_length_outside_150_to_400() {
+fn check_warns_about_length_outside_80_to_400() {
     let mut cx = seed();
     seed_inquiry(&mut cx, 4);
     let b = bundle_of(&cx, 0, "슬");
     let id = b.evidence[0].id().to_string();
     let run = |n: usize| check_draft(&[sentence(&"가".repeat(n), &[&id])], &b, forbidden(), &[], &[]);
-    assert!(run(100).length.unwrap().message.contains("짧"));
+    assert!(run(50).length.unwrap().message.contains("짧"));
+    assert!(run(79).length.unwrap().message.contains("짧"));
+    assert!(run(80).length.is_none());
     assert!(run(150).length.is_none());
     assert!(run(400).length.is_none());
     let long = run(401).length.unwrap();
@@ -682,19 +684,21 @@ fn write_text_file_refuses_unsafe_targets() {
 fn settings_default_roundtrip_and_validation() {
     let cx = seed();
     let d = load_settings(&cx.conn).unwrap();
-    assert_eq!(d, EvalSettings { style: "ham".to_string(), target_chars: 250, extra_forbidden: vec![] });
+    assert_eq!(d, EvalSettings { style: "ham".to_string(), target_chars: DEFAULT_TARGET, extra_forbidden: vec![] });
+    assert_eq!(DEFAULT_TARGET, 150);
     let saved = save_settings(&cx.conn, &EvalSettings { style: "boim".into(), target_chars: 300, extra_forbidden: vec![" 해바라기반 ".into(), "".into(), "해바라기반".into(), "별빛교실".into()] }).unwrap();
     assert_eq!(saved.style, "boim");
     assert_eq!(saved.target_chars, 300);
     assert_eq!(saved.extra_forbidden, ["해바라기반", "별빛교실"]);
     assert!(save_settings(&cx.conn, &EvalSettings { style: "xx".into(), target_chars: 250, extra_forbidden: vec![] }).is_err());
-    assert!(save_settings(&cx.conn, &EvalSettings { style: "ham".into(), target_chars: 100, extra_forbidden: vec![] }).is_err());
+    assert!(save_settings(&cx.conn, &EvalSettings { style: "ham".into(), target_chars: 79, extra_forbidden: vec![] }).is_err());
+    assert!(save_settings(&cx.conn, &EvalSettings { style: "ham".into(), target_chars: 80, extra_forbidden: vec![] }).is_ok());
     assert!(save_settings(&cx.conn, &EvalSettings { style: "ham".into(), target_chars: 401, extra_forbidden: vec![] }).is_err());
     // 잘못 저장된 값은 기본값으로 읽는다.
     settings::set(&cx.conn, KEY_STYLE, &serde_json::json!("nope")).unwrap();
     settings::set(&cx.conn, KEY_TARGET, &serde_json::json!(9999)).unwrap();
     let r = load_settings(&cx.conn).unwrap();
-    assert_eq!((r.style.as_str(), r.target_chars), ("ham", 250));
+    assert_eq!((r.style.as_str(), r.target_chars), ("ham", 150));
 }
 
 #[test]
@@ -1120,4 +1124,289 @@ mod llm_tests {
         settings::set(&conn, "evalModelId", &json!("nope")).unwrap();
         assert_eq!(llm::load_model_id(&conn).unwrap(), "qwen3-4b-q4km");
     }
+}
+
+// ---------- 세 교과 통합본 ----------
+
+use super::combined::{self, CombinedKey, CombineInput, CombinedTextInput};
+
+const BA: &str = "인사를 나누고 규칙을 지키는 모습을 보임.";
+const SEUL: &str = "돋보기로 곤충을 관찰하며 탐구함.";
+const JEUL: &str = "친구와 함께 노래를 부르며 즐겁게 표현함.";
+
+fn seed_all_subjects() -> Cx {
+    let mut cx = seed();
+    for d in 1..=3 {
+        obs_full(&mut cx, &[0], &format!("2027-04-{d:02}"), "g1s1-school", "활동에 참여함", &["[2슬01-01]", "[2바01-01]", "[2즐01-01]"], &["탐구"]);
+    }
+    cx
+}
+
+fn ckey(cx: &Cx, i: usize) -> CombinedKey {
+    CombinedKey { student_id: cx.ids[i].clone(), from: FROM.to_string(), to: TO.to_string() }
+}
+
+fn confirm_subject(cx: &Cx, i: usize, subject: &str, text: &str) {
+    let id = bundle_of(cx, i, subject).evidence[0].id().to_string();
+    save_draft(&cx.conn, &cx.media, &SaveInput { key: key(cx, i, subject), sentences: vec![sentence(text, &[&id])] }).unwrap();
+    confirm(&cx.conn, &cx.media, &key(cx, i, subject)).unwrap();
+}
+
+fn confirm_all(cx: &Cx) {
+    confirm_subject(cx, 0, "바", BA);
+    confirm_subject(cx, 0, "슬", SEUL);
+    confirm_subject(cx, 0, "즐", JEUL);
+}
+
+fn do_combine(cx: &Cx, overwrite: bool) -> DbResult<combined::CombinedView> {
+    combined::combine(&cx.conn, &CombineInput { key: ckey(cx, 0), overwrite })
+}
+
+fn warn_codes(c: &combined::CombinedCheck) -> Vec<&str> {
+    c.warnings.iter().map(|w| w.code.as_str()).collect()
+}
+
+fn plain_check(cx: &Cx, text: &str) -> combined::CombinedCheck {
+    combined::check(&cx.conn, &CombinedTextInput { key: ckey(cx, 0), text: text.to_string() }).unwrap()
+}
+
+#[test]
+fn combine_refuses_until_all_three_subjects_are_confirmed_and_names_the_missing_ones() {
+    let cx = seed_all_subjects();
+    let err = do_combine(&cx, false).unwrap_err();
+    assert!(err.contains("바른 생활") && err.contains("슬기로운 생활") && err.contains("즐거운 생활"), "{err}");
+    confirm_subject(&cx, 0, "바", BA);
+    confirm_subject(&cx, 0, "즐", JEUL);
+    let err = do_combine(&cx, false).unwrap_err();
+    assert!(err.contains("슬기로운 생활 평어를 먼저 확정해 주세요"), "{err}");
+    assert!(!err.contains("바른 생활") && !err.contains("즐거운 생활"), "{err}");
+    // 초안만 있는 교과는 확정이 아니다.
+    let id = bundle_of(&cx, 0, "슬").evidence[0].id().to_string();
+    save_draft(&cx.conn, &cx.media, &SaveInput { key: key(&cx, 0, "슬"), sentences: vec![sentence(SEUL, &[&id])] }).unwrap();
+    assert!(do_combine(&cx, false).is_err());
+    let v = combined::view(&cx.conn, &ckey(&cx, 0)).unwrap();
+    assert!(!v.can_combine && v.combined.is_none());
+    assert_eq!(v.subjects.iter().map(|s| s.confirmed).collect::<Vec<_>>(), [true, false, true]);
+    let n: i64 = cx.conn.query_row("SELECT count(*) FROM evaluation_combined", [], |r| r.get(0)).unwrap();
+    assert_eq!(n, 0);
+}
+
+#[test]
+fn combine_joins_in_order_without_subject_names_or_symbols() {
+    let cx = seed_all_subjects();
+    // 확정 순서와 상관없이 바 -> 슬 -> 즐
+    confirm_subject(&cx, 0, "즐", JEUL);
+    confirm_subject(&cx, 0, "슬", SEUL);
+    confirm_subject(&cx, 0, "바", BA);
+    let v = do_combine(&cx, false).unwrap();
+    let c = v.combined.unwrap();
+    assert_eq!(c.text, format!("{BA} {SEUL} {JEUL}"));
+    assert!(!c.text.contains("바른") && !c.text.contains("슬기") && !c.text.contains(':') && !c.text.contains('\n'));
+    assert_eq!((c.status.as_str(), c.stale), ("draft", false));
+    assert!(v.can_combine);
+    // 학급 현황
+    let st = combined::class_combined_status(&cx.conn, &cx.class, FROM, TO).unwrap();
+    assert_eq!(st[&cx.ids[0]].status, "draft");
+    assert_eq!(st[&cx.ids[1]].status, "none");
+}
+
+#[test]
+fn combined_edits_are_not_overwritten_without_confirmation() {
+    let cx = seed_all_subjects();
+    confirm_all(&cx);
+    let c = do_combine(&cx, false).unwrap().combined.unwrap();
+    combined::save(&cx.conn, &c.id, "선생님이 다듬은 글임.").unwrap();
+    let err = do_combine(&cx, false).unwrap_err();
+    assert!(err.contains("이미 통합본"), "{err}");
+    let again = combined::view(&cx.conn, &ckey(&cx, 0)).unwrap().combined.unwrap();
+    assert_eq!(again.text, "선생님이 다듬은 글임.");
+    // 덮어쓰기를 허락하면 새로 합친다(같은 행, 초안으로).
+    let over = do_combine(&cx, true).unwrap().combined.unwrap();
+    assert_eq!(over.id, c.id);
+    assert_eq!(over.text, format!("{BA} {SEUL} {JEUL}"));
+    let n: i64 = cx.conn.query_row("SELECT count(*) FROM evaluation_combined", [], |r| r.get(0)).unwrap();
+    assert_eq!(n, 1);
+}
+
+#[test]
+fn reconfirming_a_subject_marks_the_combined_text_stale_but_keeps_it() {
+    let cx = seed_all_subjects();
+    confirm_all(&cx);
+    let c = do_combine(&cx, false).unwrap().combined.unwrap();
+    combined::save(&cx.conn, &c.id, "선생님이 다듬은 글임.").unwrap();
+    combined::confirm(&cx.conn, &c.id).unwrap();
+    assert!(!combined::view(&cx.conn, &ckey(&cx, 0)).unwrap().combined.unwrap().stale);
+    // 슬 평어를 고쳐 다시 확정
+    confirm_subject(&cx, 0, "슬", "돋보기로 개미를 끝까지 관찰함.");
+    let v = combined::view(&cx.conn, &ckey(&cx, 0)).unwrap();
+    let after = v.combined.unwrap();
+    assert!(after.stale);
+    assert_eq!(after.text, "선생님이 다듬은 글임.", "통합본 글은 그대로");
+    assert_eq!(after.status, "confirmed");
+    assert!(combined::class_combined_status(&cx.conn, &cx.class, FROM, TO).unwrap()[&cx.ids[0]].stale);
+    // 다시 합치면 해시가 맞춰져 바뀜 표시가 사라진다.
+    let again = do_combine(&cx, true).unwrap().combined.unwrap();
+    assert!(!again.stale);
+    assert!(again.text.contains("개미"));
+}
+
+#[test]
+fn noun_ending_check_accepts_noun_forms_and_warns_on_other_endings() {
+    for ok in [
+        "탐구함.",
+        "관찰하며 탐구하였음.",
+        "친구의 말을 귀 기울여 듣는 모습을 보임.",
+        "인사를 잘 나눔.",
+        "질문을 이어 감.",
+        "차례를 지켜 줌.",
+        "끝까지 해냄.",
+        "표현함. 탐구함.",
+        "마지막 문장에 마침표가 없음",
+        "소수 3.5점을 받았음.",
+        "표현함!",
+        "탐구함\n표현함",
+        "따옴표로 끝나는 말을 인용하였음.\")",
+    ] {
+        assert!(split_ok(ok), "통과해야 함: {ok}");
+    }
+    for bad in ["탐구했다.", "탐구합니다.", "탐구해요.", "참여하였다", "질문을 했습니다.", "함께 놀이를 하고 있다."] {
+        assert!(!split_ok(bad), "경고해야 함: {bad}");
+    }
+    // 한 문장만 나쁜 경우도 잡는다.
+    assert!(!split_ok("탐구함. 열심히 했다. 표현함."));
+    // 줄 끝도 문장 끝으로 본다.
+    assert!(!split_ok("탐구함\n표현했다"));
+}
+
+fn split_ok(text: &str) -> bool {
+    combined::split_sentences(text).iter().all(|s| combined::ends_with_noun_form(s))
+}
+
+#[test]
+fn check_reports_noun_ending_symbols_and_missing_subject() {
+    let cx = seed_all_subjects();
+    confirm_all(&cx);
+    let ok = format!("{BA} {SEUL} {JEUL}");
+    let c = plain_check(&cx, &ok);
+    assert!(c.warnings.is_empty(), "{:?}", c.warnings);
+    assert!(c.can_confirm);
+
+    let c = plain_check(&cx, &format!("{BA} {SEUL} 즐겁게 노래를 불렀다."));
+    assert!(warn_codes(&c).contains(&combined::NOUN_ENDING), "{:?}", c.warnings);
+    assert!(warn_codes(&c).contains(&combined::MISSING_SUBJECT), "{:?}", c.warnings);
+    assert!(c.warnings.iter().any(|w| w.message.contains("즐거운 생활 내용이 빠진 것 같습니다")));
+    assert!(!c.warnings.iter().any(|w| w.message.contains("바른 생활 내용")));
+    assert!(c.can_confirm, "명사형·누락 경고는 확정을 막지 않는다");
+
+    let c = plain_check(&cx, &format!("① {BA}\n- {SEUL}\n• {JEUL} ※"));
+    assert!(warn_codes(&c).contains(&combined::SYMBOL), "{:?}", c.warnings);
+    let sym = c.warnings.iter().find(|w| w.code == combined::SYMBOL).unwrap();
+    assert!(sym.message.contains('①') && sym.message.contains('-') && sym.message.contains('•') && sym.message.contains('※'), "{}", sym.message);
+}
+
+#[test]
+fn symbol_finder_handles_numbers_bullets_and_emoji_without_false_alarms() {
+    for s in ["1. 가나다함.", "2) 가나다함.", "(3) 가나다함.", "* 가나다함.", "※ 가나다함.", "가나다 😀함.", "②"] {
+        assert!(!combined::find_symbols(s).is_empty(), "{s}");
+    }
+    for s in ["1학년 2반 친구와 3월에 활동함.", "1-2학년 활동을 함께함.", "점수 3.5점을 받음.", "가나다함."] {
+        assert!(combined::find_symbols(s).is_empty(), "{s}: {:?}", combined::find_symbols(s));
+    }
+}
+
+#[test]
+fn neis_bytes_count_hangul_three_ascii_one_newline_one() {
+    assert_eq!(combined::neis_bytes("가나다"), 9);
+    assert_eq!(combined::neis_bytes("abc 123"), 7);
+    assert_eq!(combined::neis_bytes("가a1\n"), 3 + 1 + 1 + 1);
+    assert_eq!(combined::neis_bytes("가\r\n나"), 3 + 1 + 3);
+    assert_eq!(combined::neis_bytes("함. 음,"), 3 + 1 + 1 + 3 + 1);
+    assert_eq!(combined::count_chars("가a\r\n나"), 4);
+    let cx = seed_all_subjects();
+    let c = plain_check(&cx, "가나다함.");
+    assert_eq!((c.chars, c.bytes), (5, 13));
+}
+
+#[test]
+fn length_notice_appears_over_500_chars_but_never_blocks() {
+    let cx = seed_all_subjects();
+    let short = plain_check(&cx, "탐구함.");
+    assert!(short.length_notice.is_none());
+    let long_text = format!("{}함.", "가".repeat(520));
+    let long = plain_check(&cx, &long_text);
+    assert!(long.length_notice.as_deref().unwrap().contains("학교 방침에 맞는지 확인하세요"));
+    assert!(long.can_confirm);
+    assert!(plain_check(&cx, &format!("{}함.", "가".repeat(497))).length_notice.is_none());
+}
+
+#[test]
+fn forbidden_or_other_student_name_blocks_confirm_and_unconfirmed_text_is_not_exportable() {
+    let cx = seed_all_subjects();
+    confirm_all(&cx);
+    let c = do_combine(&cx, false).unwrap().combined.unwrap();
+
+    combined::save(&cx.conn, &c.id, "박서준과 함께 탐구함.").unwrap();
+    let err = combined::confirm(&cx.conn, &c.id).unwrap_err();
+    assert!(err.contains("확정할 수 없습니다"), "{err}");
+    let ck = plain_check(&cx, "박서준과 함께 탐구함.");
+    assert!(warn_codes(&ck).contains(&OTHER_NAME) && !ck.can_confirm);
+
+    let bad = forbidden().find("우리 반 1등", &[]);
+    assert!(!bad.is_empty(), "테스트용 금지 표현이 기본 목록에 있어야 한다");
+    combined::save(&cx.conn, &c.id, "우리 반 1등 하였음.").unwrap();
+    assert!(combined::confirm(&cx.conn, &c.id).is_err());
+    let ck = plain_check(&cx, "우리 반 1등 하였음.");
+    assert!(warn_codes(&ck).contains(&FORBIDDEN) && !ck.can_confirm);
+
+    // 확정 전에는 내보내기에 나오지 않는다.
+    assert!(combined::export_text(&cx.conn, &cx.class, FROM, TO).unwrap_err().contains("확정된 통합본이 없습니다"));
+    combined::save(&cx.conn, &c.id, "함께 탐구함.").unwrap();
+    assert!(combined::export_text(&cx.conn, &cx.class, FROM, TO).is_err());
+    let v = combined::confirm(&cx.conn, &c.id).unwrap();
+    assert_eq!(v.combined.unwrap().status, "confirmed");
+    assert!(combined::export_text(&cx.conn, &cx.class, FROM, TO).is_ok());
+    // 고치면 다시 초안이 된다.
+    let v = combined::save(&cx.conn, &c.id, "함께 탐구하였음.").unwrap();
+    assert_eq!(v.combined.unwrap().status, "draft");
+    assert!(combined::save(&cx.conn, &c.id, "   ").is_err());
+    assert!(combined::save(&cx.conn, "없는-id", "글").unwrap_err().contains("찾을 수 없습니다"));
+    assert_eq!(combined::unconfirm(&cx.conn, &c.id).unwrap().combined.unwrap().status, "draft");
+}
+
+#[test]
+fn export_has_two_formats_and_only_confirmed_rows() {
+    let cx = seed_all_subjects();
+    confirm_all(&cx);
+    let c = do_combine(&cx, false).unwrap().combined.unwrap();
+    // 통합본이 초안이면 통합본 내보내기는 없고 교과별은 된다.
+    assert!(export_by_format(&cx.conn, &cx.class, FROM, TO, None).unwrap_err().contains("통합본"));
+    let (by_subject, n) = export_by_format(&cx.conn, &cx.class, FROM, TO, Some("bySubject")).unwrap();
+    assert_eq!(n, 3);
+    assert!(by_subject.starts_with("번호\t이름\t교과\t평어\r\n"));
+    combined::confirm(&cx.conn, &c.id).unwrap();
+    let (text, n) = export_by_format(&cx.conn, &cx.class, FROM, TO, None).unwrap();
+    assert_eq!(n, 1);
+    assert_eq!(text, format!("번호\t이름\t성취수준 및 특기사항\r\n1\t김하늘\t{BA} {SEUL} {JEUL}\r\n"));
+    assert_eq!(export_by_format(&cx.conn, &cx.class, FROM, TO, Some("combined")).unwrap().0, text);
+    assert!(export_by_format(&cx.conn, &cx.class, FROM, TO, Some("xml")).is_err());
+}
+
+#[test]
+fn stored_target_chars_are_kept_when_the_default_changes() {
+    let cx = seed();
+    assert_eq!(load_settings(&cx.conn).unwrap().target_chars, 150);
+    settings::set(&cx.conn, KEY_TARGET, &serde_json::json!(250)).unwrap();
+    assert_eq!(load_settings(&cx.conn).unwrap().target_chars, 250);
+    settings::set(&cx.conn, KEY_TARGET, &serde_json::json!(100)).unwrap();
+    assert_eq!(load_settings(&cx.conn).unwrap().target_chars, 100);
+}
+
+#[test]
+fn deleting_a_student_removes_the_combined_text() {
+    let cx = seed_all_subjects();
+    confirm_all(&cx);
+    do_combine(&cx, false).unwrap();
+    cx.conn.execute("DELETE FROM students WHERE id = ?1", [&cx.ids[0]]).unwrap();
+    let n: i64 = cx.conn.query_row("SELECT count(*) FROM evaluation_combined", [], |r| r.get(0)).unwrap();
+    assert_eq!(n, 0);
 }
