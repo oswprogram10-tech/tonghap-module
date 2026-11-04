@@ -4,40 +4,148 @@
   "description": "단원 빌더에서 차시를 만들 때 고르는 주제책별 활동 카드. 교사용 안내이며, 교과서 본문을 옮기지 않는다.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["dataVersion", "note", "activities"],
+  "required": [
+    "dataVersion",
+    "note",
+    "activities"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
-    "dataVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
-    "note": { "type": "string" },
+    "$schema": {
+      "type": "string"
+    },
+    "dataVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "note": {
+      "type": "string"
+    },
     "activities": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "topicBookId", "title", "subject", "standards", "kind", "minutes", "steps", "materials", "keywords"],
+        "required": [
+          "id",
+          "topicBookId",
+          "title",
+          "subject",
+          "standards",
+          "kind",
+          "minutes",
+          "steps",
+          "materials",
+          "keywords"
+        ],
         "properties": {
-          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
-          "topicBookId": { "type": "string", "pattern": "^g[12]s[12]-[a-z0-9-]+$" },
-          "title": { "type": "string", "minLength": 4, "maxLength": 30 },
-          "subject": { "enum": ["바", "슬", "즐"], "description": "주로 다루는 교과" },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "topicBookId": {
+            "type": "string",
+            "pattern": "^g[12]s[12]-[a-z0-9-]+$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 30
+          },
+          "subject": {
+            "enum": [
+              "바",
+              "슬",
+              "즐"
+            ],
+            "description": "주로 다루는 교과"
+          },
           "standards": {
-            "type": "array", "minItems": 1, "maxItems": 3,
-            "items": { "type": "string", "pattern": "^\\[2(바|슬|즐)0[1-4]-0[1-4]\\]$" },
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "pattern": "^\\[2(바|슬|즐)0[1-4]-0[1-4]\\]$"
+            },
             "description": "이 주제책에 대응하는 성취기준 중에서. 첫째는 subject 교과의 것"
           },
-          "kind": { "enum": ["general", "safety", "makingbook"], "description": "놀이는 data/plays에 따로 있으므로 여기서는 쓰지 않는다" },
-          "minutes": { "enum": [40, 80] },
+          "kind": {
+            "enum": [
+              "general",
+              "safety",
+              "makingbook"
+            ],
+            "description": "놀이는 data/plays에 따로 있으므로 여기서는 쓰지 않는다"
+          },
+          "minutes": {
+            "enum": [
+              40,
+              80
+            ]
+          },
           "steps": {
-            "type": "array", "minItems": 3, "maxItems": 5,
-            "items": { "type": "string", "minLength": 6, "maxLength": 60 },
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 5,
+            "items": {
+              "type": "string",
+              "minLength": 6,
+              "maxLength": 60
+            },
             "description": "교사가 진행하는 순서. 교과 모형(바: 실천, 슬: 탐구, 즐: 표현 놀이)의 흐름을 따른다"
           },
-          "materials": { "type": "array", "items": { "type": "string", "maxLength": 20 } },
+          "materials": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 20
+            }
+          },
           "keywords": {
-            "type": "array", "minItems": 3, "maxItems": 8,
-            "items": { "type": "string", "minLength": 1, "maxLength": 10 },
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10
+            },
             "description": "꼬리 잇기 추천에서 학생 질문과 맞춰 보는 낱말(명사 위주)"
+          },
+          "makingbook": {
+            "description": "kind가 makingbook인 카드의 인쇄 틀. zine8: A4 한 장을 접어 만드는 8쪽 책(표지·속 6쪽·뒷표지), card2: A4 반 접기 카드(앞면·안쪽), accordion4: A4 가로 4칸 병풍.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "template",
+              "title",
+              "pages"
+            ],
+            "properties": {
+              "template": {
+                "enum": [
+                  "zine8",
+                  "card2",
+                  "accordion4"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 16,
+                "description": "표지에 크게 들어갈 제목"
+              },
+              "pages": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 2,
+                  "maxLength": 24
+                },
+                "description": "쪽마다 아이에게 주는 짧은 안내(예: '내가 좋아하는 장소를 그려요'). zine8은 6개, card2는 2개(앞면 그림 안내, 안쪽 안내), accordion4는 4개"
+              }
+            }
           }
         }
       }

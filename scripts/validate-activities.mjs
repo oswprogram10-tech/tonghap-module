@@ -36,7 +36,13 @@ if (errors.length === 0) {
     for (const c of a.standards) if (!own.includes(c)) errors.push(`${a.id}: ${c}는 주제책 「${t.title}」의 성취기준이 아님 (${own.join(', ')})`);
     if (!a.standards[0].startsWith(`[2${a.subject}`)) errors.push(`${a.id}: 첫 성취기준이 ${a.subject} 교과가 아님`);
     if (new Set(a.standards).size !== a.standards.length) errors.push(`${a.id}: 성취기준 중복`);
-    const text = [a.title, ...a.steps].join(' ');
+    if (a.kind === 'makingbook' && !a.makingbook) errors.push(`${a.id}: 메이킹북 카드에 인쇄 틀(makingbook)이 없음`);
+    if (a.kind !== 'makingbook' && a.makingbook) errors.push(`${a.id}: 메이킹북이 아닌 카드에 인쇄 틀이 있음`);
+    if (a.makingbook) {
+      const need = { zine8: 6, card2: 2, accordion4: 4 }[a.makingbook.template];
+      if (a.makingbook.pages.length !== need) errors.push(`${a.id}: ${a.makingbook.template} 틀은 안내가 ${need}개여야 함 (현재 ${a.makingbook.pages.length})`);
+    }
+    const text = [a.title, ...a.steps, ...(a.makingbook ? [a.makingbook.title, ...a.makingbook.pages] : [])].join(' ');
     for (const w of words) {
       if (text.includes(w.pattern) && !(w.except ?? []).some((x) => text.includes(x))) errors.push(`${a.id}: 금지 표현 '${w.pattern}'`);
     }
