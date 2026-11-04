@@ -19,12 +19,15 @@ concurrency:
 env:
   # cargo install --locked 로 고정하는 tauri-driver 버전
   TAURI_DRIVER_VERSION: 2.1.0
+  # 자막 시나리오용 작은 모델(engines.yml과 같은 파일·해시)
+  WHISPER_MODEL_URL: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin
+  WHISPER_MODEL_SHA256: 818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7
 
 jobs:
   e2e:
     name: 윈도우 화면 E2E
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -36,6 +39,10 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      # whisper.cpp 윈도우 실행 파일(음성 자막 시나리오). 버전은 src-tauri/engines.json
+      - run: npm run fetch:engines
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # tauri-driver: 버전을 고정해 설치하고, 설치한 실행 파일은 캐시한다.
       - name: tauri-driver 캐시
@@ -59,6 +66,53 @@ jobs:
       - run: npm run build
       - run: npx tauri build --debug --no-bundle
 
+      # tauri build --no-bundle은 리소스를 실행 파일 옆(resources\)에 두는데, 엔진이 빠져 있으면 복사한다.
+      - name: 엔진이 실행 파일 옆에 있는지 확인
+        shell: pwsh
+        run: |
+          $dst = Join-Path $env:GITHUB_WORKSPACE 'src-tauri\target\debug\resources\engines'
+          $src = Join-Path $env:GITHUB_WORKSPACE 'src-tauri\resources\engines'
+          if (-not (Test-Path (Join-Path $dst 'whisper'))) {
+            Write-Host "엔진이 없어 복사합니다: $src -> $dst"
+            New-Item -ItemType Directory -Force -Path $dst | Out-Null
+            Copy-Item -Recurse -Force (Join-Path $src '*') $dst
+          }
+          Get-ChildItem -Recurse $dst -Filter 'whisper-cli.exe' | ForEach-Object { Write-Host "확인: $($_.FullName)" }
+          if (-not (Get-ChildItem -Recurse $dst -Filter 'whisper-cli.exe')) { throw 'whisper-cli.exe를 찾을 수 없습니다' }
+
+      - name: 자막 테스트 모델 캐시
+        id: whisper-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\e2e-models
+          key: e2e-whisper-tiny-${{ env.WHISPER_MODEL_SHA256 }}
+
+      - name: 자막 테스트 모델 내려받기(재시도, SHA-256 확인)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'e2e-models'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $path = Join-Path $dir 'ggml-tiny-q5_1.bin'
+          $sha = $env:WHISPER_MODEL_SHA256
+          $ok = $false
+          if (Test-Path $path) {
+            if ((Get-FileHash -Algorithm SHA256 $path).Hash.ToLower() -eq $sha) { Write-Host '캐시 사용'; $ok = $true }
+            else { Remove-Item -Force $path }
+          }
+          for ($i = 1; -not $ok -and $i -le 5; $i++) {
+            try {
+              Write-Host "내려받기 ($i/5)"
+              Invoke-WebRequest -Uri $env:WHISPER_MODEL_URL -OutFile $path -UseBasicParsing -TimeoutSec 900
+              if ((Get-FileHash -Algorithm SHA256 $path).Hash.ToLower() -eq $sha) { $ok = $true; break }
+              Write-Host 'SHA-256 불일치'
+            } catch { Write-Host "실패: $($_.Exception.Message)" }
+            Remove-Item -Force -ErrorAction SilentlyContinue $path
+            Start-Sleep -Seconds (10 * $i)
+          }
+          if (-not $ok) { throw '자막 테스트 모델을 받지 못했습니다' }
+          Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_E2E_STT_MODEL=$path"
+
       # 진단: 앱이 WebDriver 없이도 시작 직후 죽지 않는지, WebView2가 디버그 포트를 여는지 확인한다.
       # (DevToolsActivePort 오류가 캡처 설정 문제인지 앱 시작 실패인지 가르기 위함)
       - name: 앱 단독 실행 진단
@@ -68,7 +122,7 @@ jobs:
         run: ./e2e/scripts/smoke-launch.ps1 -App "${{ github.workspace }}\src-tauri\target\debug\tonghap-module.exe"
 
       - name: 화면 E2E 실행
-        timeout-minutes: 20
+        timeout-minutes: 35
         run: npm run e2e
         env:
           TONGHAP_E2E_APP: ${{ github.workspace }}\src-tauri\target\debug\tonghap-module.exe

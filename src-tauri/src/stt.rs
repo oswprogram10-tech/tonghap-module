@@ -306,10 +306,17 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
             let db = app.state::<Mutex<Connection>>();
             let model = || {
                 let id = lock(&db).map(|c| model_id_setting(&c)).unwrap_or_else(|_| MODEL_DEFAULT.to_string());
-                let path = model_spec(&id).and_then(|s| model_path(&app, s)).unwrap_or_default();
+                // 화면 E2E(디버그 빌드): 테스트용 작은 모델 파일을 쓴다.
+                let path = crate::webdriver::stt_model_override()
+                    .or_else(|| model_spec(&id).and_then(|s| model_path(&app, s)).ok())
+                    .unwrap_or_default();
                 (id, path)
             };
             let engine_fn = |model: &Path, wav: &Path| -> Result<String, String> {
+                if crate::webdriver::stt_model_override().as_deref() == Some(model) {
+                    let program = engine(&app, "whisper", "whisper-cli")?;
+                    return run(&program, &whisper_args(model, wav, "ko"), STT_TIMEOUT).map(|o| o.stdout);
+                }
                 let name = model.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 let spec = crate::diag::MODELS
                     .iter()
@@ -351,7 +358,7 @@ pub fn stt_status(app: AppHandle, db: State<Mutex<Connection>>) -> DbResult<SttS
     };
     let spec = model_spec(&model_id)?;
     Ok(SttStatus {
-        model_ready: is_ready(&model_path(&app, spec)?, spec),
+        model_ready: crate::webdriver::stt_model_override().is_some_and(|p| p.exists()) || is_ready(&model_path(&app, spec)?, spec),
         engine_ready: engine(&app, "whisper", "whisper-cli").is_ok(),
         model_id,
         auto,

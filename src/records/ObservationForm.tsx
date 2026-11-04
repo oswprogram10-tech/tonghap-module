@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFiles } from '../lib/dialogs';
 import { ACTIVITY_TAGS, errorText, recordsApi, type Attachment, type ClassInfo, type Observation, type Student } from './api';
 import AttachmentView from './Attachments';
 import { autoTranscribe } from '../stt/api';
@@ -79,12 +79,10 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
 
   const pickPhotos = async () => {
     try {
-      const picked = await open({
-        multiple: true,
+      const list = await pickFiles({
         filters: [{ name: '사진', extensions: ['jpg', 'jpeg', 'png', 'webp', 'heic'] }],
       });
-      if (!picked) return;
-      const list = Array.isArray(picked) ? picked : [picked];
+      if (!list) return;
       setPhotos((cur) => [...cur, ...list.filter((p) => !cur.includes(p))]);
     } catch (e) {
       setError(errorText(e));

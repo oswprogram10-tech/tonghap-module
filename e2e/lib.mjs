@@ -88,12 +88,12 @@ const withTimeout = (promise, ms, what) =>
   Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what}이(가) ${ms / 1000}초 안에 끝나지 않았습니다.`)), ms).unref())]);
 
 /** tauri-driver를 띄우고 앱을 실행한 WebDriver를 돌려준다. 실패하면 남은 프로세스를 모두 끄고 던진다. */
-export async function startSession(dataDir) {
+export async function startSession(dataDir, extraEnv = {}) {
   for (const [name, p] of [['앱 실행 파일(TONGHAP_E2E_APP)', config.app], ['msedgedriver(MSEDGEDRIVER_PATH)', config.nativeDriver]]) {
     if (!p || !fs.existsSync(p)) throw new Error(`${name}을(를) 찾을 수 없습니다: ${p || '(지정 안 됨)'}`);
   }
   // 환경 변수는 tauri-driver → msedgedriver → 앱으로 이어서 전달된다.
-  const env = { ...process.env, TONGHAP_DATA_DIR: dataDir };
+  const env = { ...process.env, TONGHAP_DATA_DIR: dataDir, ...extraEnv };
   const args = ['--native-driver', config.nativeDriver];
   console.log(`[e2e] 실행: ${config.tauriDriver} ${args.join(' ')}`);
   console.log(`[e2e] 앱: ${config.app}`);

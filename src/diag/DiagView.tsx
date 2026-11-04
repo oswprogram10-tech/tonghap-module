@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../lib/dialogs';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { STT_MODELS, sttApi, type SttStatus } from '../stt/api';
 import {
@@ -108,8 +108,8 @@ function DiagPanel() {
   };
 
   const importFile = async (m: ModelStatus) => {
-    const picked = await open({ multiple: false, directory: false, title: `${m.fileName} 파일 선택` });
-    if (typeof picked !== 'string') return;
+    const picked = await pickFile({ title: `${m.fileName} 파일 선택` });
+    if (!picked) return;
     setModelErrors((e) => ({ ...e, [m.id]: undefined }));
     setProgress((p) => ({ ...p, [m.id]: { stage: 'verifying' } }));
     try {

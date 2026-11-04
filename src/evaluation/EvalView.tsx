@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { save } from '@tauri-apps/plugin-dialog';
+import { saveFile } from '../lib/dialogs';
 import { errorText, type ClassInfo } from '../records/api';
 import ClassManager from '../records/ClassManager';
 import { RecordsGate, type RecordsCtx } from '../records/useRecords';
@@ -105,7 +105,7 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
     setInfo(null);
     setError(null);
     try {
-      const path = await save({
+      const path = await saveFile({
         title: '학급 평어 내보내기',
         defaultPath: `평어-${cls.schoolYear}-${cls.name}.txt`,
         filters: [{ name: '텍스트 파일', extensions: ['txt'] }],

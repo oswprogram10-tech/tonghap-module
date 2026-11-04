@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFolder } from '../lib/dialogs';
 import { errorText, recordsApi, type ClassInfo } from '../records/api';
 import { topicTitle, topicsOfGrade } from '../records/util';
 import { reportApi, type ReportDraft } from './api';
@@ -29,8 +29,8 @@ export default function BatchReports({ cls, topicId, onClose }: { cls: ClassInfo
     setFailures([]);
     setOkCount(null);
     try {
-      const dir = await open({ directory: true, multiple: false, title: '리포트를 저장할 폴더' });
-      if (typeof dir !== 'string') return;
+      const dir = await pickFolder({ title: '리포트를 저장할 폴더' });
+      if (!dir) return;
       setFolder(dir);
       setRunning(true);
       const students = await recordsApi.studentList(cls.id, false);

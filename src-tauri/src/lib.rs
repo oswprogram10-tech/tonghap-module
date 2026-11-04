@@ -55,6 +55,7 @@ pub fn run() {
             app_info,
             webdriver::webdriver_overrides_active,
             webdriver::board_open_with_overrides,
+            webdriver::e2e_dialog_next,
             about::about_storage,
             diag::system::diag_system,
             diag::bench::diag_engines,

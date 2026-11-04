@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, saveFile } from '../lib/dialogs';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { formatBytes } from '../diag/estimate';
 import { errorText } from '../records/api';
@@ -74,7 +74,7 @@ function Backup({ onRestored }: { onRestored: () => void }) {
   const create = async () => {
     setCreateError(null);
     setResult(null);
-    const path = await save({ title: '백업 파일 저장', defaultPath: defaultBackupName(), filters: FILTERS });
+    const path = await saveFile({ title: '백업 파일 저장', defaultPath: defaultBackupName(), filters: FILTERS });
     if (!path) return;
     setBusy(true);
     setProgress({ stage: 'snapshot', done: 0, total: 0 });
@@ -92,8 +92,8 @@ function Backup({ onRestored }: { onRestored: () => void }) {
   };
 
   const pick = async () => {
-    const picked = await open({ multiple: false, directory: false, title: '백업 파일 선택', filters: FILTERS });
-    if (typeof picked !== 'string') return;
+    const picked = await pickFile({ title: '백업 파일 선택', filters: FILTERS });
+    if (!picked) return;
     setFile(picked);
     setSummary(null);
     setRestoreError(null);

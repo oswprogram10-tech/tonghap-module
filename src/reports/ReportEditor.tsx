@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { save } from '@tauri-apps/plugin-dialog';
+import { saveFile } from '../lib/dialogs';
 import { errorText, type ClassInfo, type Student } from '../records/api';
 import { formatDate, shorten, topicTitle, topicsOfGrade } from '../records/util';
 import {
@@ -111,7 +111,7 @@ export default function ReportEditor({ cls, student, topicId, onClose }: { cls: 
     setBusy('export');
     setInfo(null);
     try {
-      const path = await save({
+      const path = await saveFile({
         defaultPath: reportFileName(student.number, student.name, topicTitle(topic)),
         filters: [{ name: 'PNG 이미지', extensions: ['png'] }],
       });
