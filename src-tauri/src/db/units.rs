@@ -58,6 +58,9 @@ pub struct SessionInput {
     pub reflection: String,
     #[serde(default)]
     pub standards: Vec<SessionStandard>,
+    /// 활동 카드에서 만든 차시면 그 카드의 id.
+    #[serde(default)]
+    pub activity_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -80,6 +83,7 @@ pub struct Session {
     pub observation_count: i64,
     pub created_at: String,
     pub updated_at: String,
+    pub activity_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Default, PartialEq)]
@@ -151,6 +155,9 @@ pub struct UnitSummary {
 pub struct NextSession {
     pub title: String,
     pub stage_id: String,
+    /// 활동 카드로 채울 때 그 카드의 id. 카드의 활동·시간·종류·성취기준이 새 차시에 들어간다.
+    #[serde(default)]
+    pub activity_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -240,6 +247,7 @@ struct CleanSession {
     student_questions: String,
     reflection: String,
     standards: Vec<SessionStandard>,
+    activity_id: Option<String>,
 }
 
 fn validate_session(conn: &Connection, input: &SessionInput) -> DbResult<CleanSession> {
@@ -272,6 +280,11 @@ fn validate_session(conn: &Connection, input: &SessionInput) -> DbResult<CleanSe
             standards.push(SessionStandard { code, mode: s.mode.clone() });
         }
     }
+    let activity_id = match input.activity_id.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(a) if a.chars().count() > 80 => return Err("활동 카드 번호가 올바르지 않습니다".to_string()),
+        Some(a) => Some(a.to_string()),
+    };
     Ok(CleanSession {
         title,
         plan: input.plan.clone(),
@@ -282,6 +295,7 @@ fn validate_session(conn: &Connection, input: &SessionInput) -> DbResult<CleanSe
         student_questions: input.student_questions.clone(),
         reflection: input.reflection.clone(),
         standards,
+        activity_id,
     })
 }
 
@@ -290,7 +304,7 @@ fn validate_session(conn: &Connection, input: &SessionInput) -> DbResult<CleanSe
 const SESSION_COLS: &str = "s.id, s.unit_id, s.stage_id, s.position, s.title, s.plan, s.minutes, s.kind, s.scheduled_on, s.status,
     s.student_questions, s.reflection, s.follows_session_id,
     (SELECT count(*) FROM observations o WHERE o.unit_session_id = s.id AND o.deleted_at IS NULL),
-    s.created_at, s.updated_at";
+    s.created_at, s.updated_at, s.activity_id";
 
 fn session_row(r: &rusqlite::Row) -> rusqlite::Result<Session> {
     Ok(Session {
@@ -311,6 +325,7 @@ fn session_row(r: &rusqlite::Row) -> rusqlite::Result<Session> {
         observation_count: r.get(13)?,
         created_at: r.get(14)?,
         updated_at: r.get(15)?,
+        activity_id: r.get(16)?,
     })
 }
 
@@ -550,9 +565,9 @@ fn insert_session(conn: &Connection, unit_id: &str, stage_id: &str, c: &CleanSes
     let now = now_iso();
     conn.execute(
         "INSERT INTO unit_sessions (id, unit_id, stage_id, position, title, plan, minutes, kind, scheduled_on, status,
-                                    student_questions, reflection, follows_session_id, created_at, updated_at)
-         VALUES (?1, ?2, ?3, (SELECT count(*) FROM unit_sessions WHERE stage_id = ?3), ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
-        params![id, unit_id, stage_id, c.title, c.plan, c.minutes, c.kind, c.scheduled_on, c.status, c.student_questions, c.reflection, follows, now],
+                                    student_questions, reflection, follows_session_id, created_at, updated_at, activity_id)
+         VALUES (?1, ?2, ?3, (SELECT count(*) FROM unit_sessions WHERE stage_id = ?3), ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13, ?14)",
+        params![id, unit_id, stage_id, c.title, c.plan, c.minutes, c.kind, c.scheduled_on, c.status, c.student_questions, c.reflection, follows, now, c.activity_id],
     )
     .db()?;
     replace_standards(conn, &id, &c.standards)?;
@@ -579,8 +594,8 @@ pub fn update_session(conn: &mut Connection, id: &str, input: &SessionInput) -> 
     let tx = conn.transaction().db()?;
     tx.execute(
         "UPDATE unit_sessions SET title = ?2, plan = ?3, minutes = ?4, kind = ?5, scheduled_on = ?6, status = ?7,
-                student_questions = ?8, reflection = ?9, updated_at = ?10 WHERE id = ?1",
-        params![id, c.title, c.plan, c.minutes, c.kind, c.scheduled_on, c.status, c.student_questions, c.reflection, now_iso()],
+                student_questions = ?8, reflection = ?9, updated_at = ?10, activity_id = ?11 WHERE id = ?1",
+        params![id, c.title, c.plan, c.minutes, c.kind, c.scheduled_on, c.status, c.student_questions, c.reflection, now_iso(), c.activity_id],
     )
     .db()?;
     replace_standards(&tx, id, &c.standards)?;
@@ -636,10 +651,10 @@ pub fn complete_and_follow(
     if let Some(next) = next {
         // 잘못된 단계·제목이면 여기서 오류가 나고, 트랜잭션이 버려져 완료 처리도 되돌려진다.
         check_stage_in_unit(&tx, &next.stage_id, &unit_id)?;
-        let plan = if questions.is_empty() { String::new() } else { format!("{FOLLOW_PREFIX}{questions}\n\n") };
-        let clean = CleanSession {
+        let mut plan = if questions.is_empty() { String::new() } else { format!("{FOLLOW_PREFIX}{questions}\n\n") };
+        let mut clean = CleanSession {
             title: clean_title(&next.title, "차시")?,
-            plan,
+            plan: String::new(),
             minutes: 40,
             kind: "general".to_string(),
             scheduled_on: None,
@@ -647,7 +662,17 @@ pub fn complete_and_follow(
             student_questions: String::new(),
             reflection: String::new(),
             standards: vec![],
+            activity_id: None,
         };
+        if let Some(card_id) = next.activity_id.as_deref().map(str::trim).filter(|a| !a.is_empty()) {
+            let card = super::activities::find(&tx, card_id)?;
+            plan.push_str(&super::activities::plan_text(&card));
+            clean.minutes = card.minutes;
+            clean.kind = card.kind.clone();
+            clean.standards = card.standards.iter().map(|code| SessionStandard { code: code.clone(), mode: "focus".to_string() }).collect();
+            clean.activity_id = Some(card.id);
+        }
+        clean.plan = plan;
         let new_id = insert_session(&tx, &unit_id, &next.stage_id, &clean, Some(id))?;
         let at = if next.stage_id == stage_id { (position + 1) as usize } else { usize::MAX };
         place(&tx, &new_id, &next.stage_id, at)?;
@@ -809,6 +834,7 @@ mod tests {
             student_questions: String::new(),
             reflection: String::new(),
             standards: vec![],
+            activity_id: None,
         }
     }
 
@@ -973,7 +999,7 @@ mod tests {
         let mut with_std = sin(&u, 0, "a");
         with_std.standards = vec![SessionStandard { code: "[2바01-01]".into(), mode: "focus".into() }];
         update_session(&mut conn, &a.id, &with_std).unwrap();
-        let next = NextSession { title: "공룡은 어디서 왔을까".into(), stage_id: u.stages[0].id.clone() };
+        let next = NextSession { title: "공룡은 어디서 왔을까".into(), stage_id: u.stages[0].id.clone(), activity_id: None };
         let after = complete_and_follow(&mut conn, &a.id, "공룡이 궁금해요", "반응이 좋았다", Some(&next)).unwrap();
         assert_eq!(titles(&after, 0), ["a", "공룡은 어디서 왔을까", "b"]);
         positions_are_contiguous(&after);
@@ -993,7 +1019,7 @@ mod tests {
         let a = create_session(&mut conn, &sin(&u, 0, "a")).unwrap();
         create_session(&mut conn, &sin(&u, 2, "x")).unwrap();
         create_session(&mut conn, &sin(&u, 2, "y")).unwrap();
-        let next = NextSession { title: "z".into(), stage_id: u.stages[2].id.clone() };
+        let next = NextSession { title: "z".into(), stage_id: u.stages[2].id.clone(), activity_id: None };
         let after = complete_and_follow(&mut conn, &a.id, "", "", Some(&next)).unwrap();
         assert_eq!(titles(&after, 2), ["x", "y", "z"]);
         assert!(after.stages[2].sessions[2].plan.is_empty());
@@ -1010,9 +1036,9 @@ mod tests {
         let a = new_unit(&mut conn, &cid);
         let b = new_unit(&mut conn, &cid);
         let s = create_session(&mut conn, &sin(&a, 0, "a")).unwrap();
-        let wrong_stage = NextSession { title: "z".into(), stage_id: b.stages[0].id.clone() };
+        let wrong_stage = NextSession { title: "z".into(), stage_id: b.stages[0].id.clone(), activity_id: None };
         assert!(complete_and_follow(&mut conn, &s.id, "질문", "성찰", Some(&wrong_stage)).is_err());
-        let blank_title = NextSession { title: " ".into(), stage_id: a.stages[0].id.clone() };
+        let blank_title = NextSession { title: " ".into(), stage_id: a.stages[0].id.clone(), activity_id: None };
         assert!(complete_and_follow(&mut conn, &s.id, "질문", "성찰", Some(&blank_title)).is_err());
         let now = get_session(&conn, &s.id).unwrap();
         assert_eq!((now.status.as_str(), now.student_questions.as_str(), now.reflection.as_str()), ("planned", "", ""));

@@ -3,6 +3,7 @@ import { curriculum } from '../curriculum';
 import { errorText } from '../records/api';
 import { shorten, standardByCode, topicStandards } from '../records/util';
 import { unitsApi, type Session, type SessionInput, type SessionKind, type SessionStandard, type SessionStatus, type StandardMode, type UnitDetail } from './api';
+import { cardPlan, type Activity } from './activities';
 import FollowUpDialog from './FollowUpDialog';
 import { KIND_LABEL, MODE_LABEL, STATUS_LABEL, toSessions } from './util';
 
@@ -10,6 +11,8 @@ interface Props {
   unit: UnitDetail;
   /** 수정할 차시. 없으면 새 차시. */
   session: Session | null;
+  /** 새 차시를 채울 활동 카드(고른 경우). */
+  card?: Activity | null;
   /** 새 차시를 넣을 단계(수정이면 현재 단계). */
   stageId: string;
   onClose: () => void;
@@ -20,15 +23,15 @@ interface Props {
 const MINUTE_PRESETS = [40, 80, 120];
 
 /** 차시 만들기·편집 창. */
-export default function SessionEditor({ unit, session, stageId, onClose, onChanged, onOpenSession }: Props) {
-  const [title, setTitle] = useState(session?.title ?? '');
-  const [plan, setPlan] = useState(session?.plan ?? '');
-  const [minutes, setMinutes] = useState(session?.minutes ?? 40);
+export default function SessionEditor({ unit, session, card, stageId, onClose, onChanged, onOpenSession }: Props) {
+  const [title, setTitle] = useState(session?.title ?? card?.title ?? '');
+  const [plan, setPlan] = useState(session?.plan ?? (card ? cardPlan(card) : ''));
+  const [minutes, setMinutes] = useState(session?.minutes ?? card?.minutes ?? 40);
   const [scheduledOn, setScheduledOn] = useState(session?.scheduledOn ?? '');
-  const [kind, setKind] = useState<SessionKind>(session?.kind ?? 'general');
+  const [kind, setKind] = useState<SessionKind>(session?.kind ?? card?.kind ?? 'general');
   const [status, setStatus] = useState<SessionStatus>(session?.status ?? 'planned');
   const [stage, setStage] = useState(session?.stageId ?? stageId);
-  const [standards, setStandards] = useState<SessionStandard[]>(session?.standards ?? []);
+  const [standards, setStandards] = useState<SessionStandard[]>(session?.standards ?? card?.standards.map((code) => ({ code, mode: 'focus' as const })) ?? []);
   const [questions, setQuestions] = useState(session?.studentQuestions ?? '');
   const [reflection, setReflection] = useState(session?.reflection ?? '');
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +60,7 @@ export default function SessionEditor({ unit, session, stageId, onClose, onChang
     studentQuestions: questions,
     reflection,
     standards,
+    activityId: session ? (session.activityId ?? null) : (card?.id ?? null),
   });
 
   const persist = async (): Promise<Session | null> => {
@@ -123,6 +127,7 @@ export default function SessionEditor({ unit, session, stageId, onClose, onChang
     <div className="rec-modal" role="dialog" aria-modal="true" aria-label={session ? '차시 편집' : '차시 추가'}>
       <div className="rec-modal-body">
         <h2>{session ? '차시 편집' : '차시 추가'}</h2>
+        {!session && card && <p className="diag-hint">활동 카드 「{card.title}」로 채웠습니다. 필요한 곳을 고쳐서 저장하세요.</p>}
 
         <label className="rec-field">
           제목

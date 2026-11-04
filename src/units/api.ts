@@ -22,6 +22,8 @@ export interface SessionInput {
   studentQuestions: string;
   reflection: string;
   standards: SessionStandard[];
+  /** 활동 카드에서 만든 차시면 그 카드의 id. */
+  activityId?: string | null;
 }
 
 export interface Session extends SessionInput {
@@ -106,7 +108,7 @@ export const unitsApi = {
   sessionUpdate: (id: string, input: SessionInput) => invoke<Session>('session_update', { id, input }),
   sessionMove: (id: string, stageId: string, position: number) => invoke<UnitDetail>('session_move', { id, stageId, position }),
   sessionDelete: (id: string) => invoke<void>('session_delete', { id }),
-  completeAndFollow: (id: string, studentQuestions: string, reflection: string, next?: { title: string; stageId: string }) =>
+  completeAndFollow: (id: string, studentQuestions: string, reflection: string, next?: { title: string; stageId: string; activityId?: string | null }) =>
     invoke<UnitDetail>('session_complete_and_follow', { id, studentQuestions, reflection, next: next ?? null }),
   sessionsForRecord: (classId: string, date: string) => invoke<SessionOption[]>('sessions_for_record', { classId, date }),
 };

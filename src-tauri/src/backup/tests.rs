@@ -560,3 +560,34 @@ fn restoring_a_version_5_backup_migrates_it_to_the_evaluation_schema() {
     let drafts: i64 = conn.query_row("SELECT count(*) FROM evaluation_drafts", [], |r| r.get(0)).unwrap();
     assert_eq!(drafts, 0);
 }
+
+#[test]
+fn restoring_a_version_6_backup_migrates_it_to_the_activity_schema() {
+    let src = tmp("v6").join("data");
+    std::fs::create_dir_all(src.join("media")).unwrap();
+    let v6 = Connection::open(src.join("tonghap.db")).unwrap();
+    crate::db::migrations::apply_up_to(&v6, 6).unwrap();
+    v6.execute_batch(
+        "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c1', 2027, 1, '1반', 't');
+         INSERT INTO units (id, class_id, tool_id, title, created_at, updated_at) VALUES ('u1', 'c1', 'free', '옛 단원', 't', 't');
+         INSERT INTO unit_stages (id, unit_id, position, title) VALUES ('g1', 'u1', 0, '수업');
+         INSERT INTO unit_sessions (id, unit_id, stage_id, position, title, created_at, updated_at)
+           VALUES ('s1', 'u1', 'g1', 0, '옛 차시', 't', 't');",
+    )
+    .unwrap();
+    let src_db = Mutex::new(v6);
+    let file = make_backup(&src_db, &src);
+    assert_eq!(inspect(&file, PW).unwrap().schema_version, 6);
+
+    let (target, tdb) = seeded("v6-target");
+    run_restore(&tdb, &target, &file, PW).unwrap();
+
+    let conn = tdb.lock().unwrap();
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+    assert_eq!(version, crate::db::migrations::latest_version());
+    let (title, activity): (String, Option<String>) =
+        conn.query_row("SELECT title, activity_id FROM unit_sessions WHERE id = 's1'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+    assert_eq!((title.as_str(), activity), ("옛 차시", None));
+    let custom: i64 = conn.query_row("SELECT count(*) FROM custom_activities", [], |r| r.get(0)).unwrap();
+    assert_eq!(custom, 0);
+}

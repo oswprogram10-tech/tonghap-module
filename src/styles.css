@@ -2064,3 +2064,76 @@ button {
   flex: 1 1 260px;
   margin: 0;
 }
+
+/* 활동 카드 */
+.act-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.act-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  align-items: flex-start;
+}
+
+.act-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.act-card-head,
+.act-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.act-card-title {
+  font-size: 18px;
+}
+
+.act-card-min {
+  color: var(--muted);
+}
+
+.act-card-steps {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--text);
+}
+
+.act-reasons {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.act-reasons li {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.act-choose .rec-row {
+  margin-top: 12px;
+}
+
+.act-form {
+  display: grid;
+  gap: 4px;
+}

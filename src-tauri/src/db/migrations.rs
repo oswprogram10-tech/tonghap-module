@@ -214,6 +214,17 @@ CREATE TABLE evaluation_drafts (
 );
 CREATE INDEX idx_evaluation_drafts_class ON evaluation_drafts(class_id, subject);
 "#,
+    // 7: 활동 카드(교사 카드, 차시가 온 카드)
+    r#"
+CREATE TABLE custom_activities (
+  id TEXT PRIMARY KEY,
+  data TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+ALTER TABLE unit_sessions ADD COLUMN activity_id TEXT;
+"#,
 ];
 
 pub fn latest_version() -> i64 {
@@ -250,11 +261,11 @@ mod tests {
         apply(&conn).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, latest_version());
-        assert_eq!(v, 6);
+        assert_eq!(v, 7);
         for table in [
             "classes", "students", "observations", "observation_students", "observation_standards", "observation_tags", "attachments", "settings",
             "units", "unit_stages", "unit_sessions", "unit_session_standards", "custom_plays", "play_log", "habits", "habit_checks", "parent_reports",
-            "evaluation_drafts",
+            "evaluation_drafts", "custom_activities",
         ] {
             let n: i64 = conn
                 .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0))
@@ -381,7 +392,7 @@ mod tests {
              INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s', 'c', 1, '김하늘', 't');",
         )
         .unwrap();
-        apply(&conn).unwrap();
+        apply_up_to(&conn, 6).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, 6);
         let name: String = conn.query_row("SELECT name FROM students WHERE id = 's'", [], |r| r.get(0)).unwrap();
@@ -397,5 +408,27 @@ mod tests {
         conn.execute("DELETE FROM students WHERE id = 's'", []).unwrap();
         let n: i64 = conn.query_row("SELECT count(*) FROM evaluation_drafts", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn migration_7_keeps_version_6_sessions_and_adds_activity_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        apply_up_to(&conn, 6).unwrap();
+        conn.execute_batch(
+            "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c', 2027, 1, '1반', 't');
+             INSERT INTO units (id, class_id, tool_id, title, created_at, updated_at) VALUES ('u', 'c', 'free', '단원', 't', 't');
+             INSERT INTO unit_stages (id, unit_id, position, title) VALUES ('g', 'u', 0, '수업');
+             INSERT INTO unit_sessions (id, unit_id, stage_id, position, title, created_at, updated_at) VALUES ('s', 'u', 'g', 0, '옛 차시', 't', 't');",
+        )
+        .unwrap();
+        apply(&conn).unwrap();
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, 7);
+        let (title, activity): (String, Option<String>) =
+            conn.query_row("SELECT title, activity_id FROM unit_sessions WHERE id = 's'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((title.as_str(), activity), ("옛 차시", None));
+        conn.execute("INSERT INTO custom_activities (id, data, created_at, updated_at) VALUES ('custom-1', '{}', 't', 't')", []).unwrap();
+        assert!(conn.execute("INSERT INTO custom_activities (id, data, created_at, updated_at) VALUES ('custom-1', '{}', 't', 't')", []).is_err());
     }
 }

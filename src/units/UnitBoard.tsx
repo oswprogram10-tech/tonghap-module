@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { errorText, type ClassInfo } from '../records/api';
 import { standardByCode, topicStandards, topicTitle, topicsOfGrade, formatDate, shorten } from '../records/util';
 import { unitsApi, type Session, type UnitDetail } from './api';
+import ActivityPicker from './ActivityPicker';
+import type { Activity } from './activities';
 import RequirementBadges from './Badges';
 import SessionEditor from './SessionEditor';
 import { KIND_LABEL, MODE_SHORT, STATUS_LABEL, formatMinutes, toSessions, toolName, topicTotalSessions } from './util';
@@ -12,12 +14,15 @@ interface Props {
   onBack: () => void;
 }
 
-type Editor = { session: Session | null; stageId: string } | null;
+type Editor = { session: Session | null; stageId: string; card?: Activity } | null;
+/** 차시 추가: 빈 차시 / 카드 고르기 두 갈래. */
+type Adding = { stageId: string; step: 'choose' | 'cards' } | null;
 
 export default function UnitBoard({ cls, unitId, onBack }: Props) {
   const [unit, setUnit] = useState<UnitDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor>(null);
+  const [adding, setAdding] = useState<Adding>(null);
   const [title, setTitle] = useState('');
   const [memo, setMemo] = useState('');
   const [topicId, setTopicId] = useState<string | null>(null);
@@ -247,15 +252,52 @@ export default function UnitBoard({ cls, unitId, onBack }: Props) {
               </li>
             ))}
           </ol>
-          <button className="diag-secondary" onClick={() => setEditor({ session: null, stageId: stage.id })}>
+          <button className="diag-secondary" onClick={() => setAdding({ stageId: stage.id, step: 'choose' })}>
             차시 추가
           </button>
         </section>
       ))}
 
+      {adding?.step === 'choose' && (
+        <div className="rec-modal" role="dialog" aria-modal="true" aria-label="차시 추가">
+          <div className="rec-modal-body act-choose">
+            <h2>차시 추가</h2>
+            <div className="rec-row rec-wrap">
+              <button
+                className="diag-secondary"
+                onClick={() => {
+                  setEditor({ session: null, stageId: adding.stageId });
+                  setAdding(null);
+                }}
+              >
+                빈 차시
+              </button>
+              <button className="diag-primary" onClick={() => setAdding({ ...adding, step: 'cards' })}>
+                활동 카드에서 고르기
+              </button>
+              <button className="diag-secondary" onClick={() => setAdding(null)}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {adding?.step === 'cards' && (
+        <ActivityPicker
+          topicBookId={unit.topicBookId}
+          grade={cls.grade}
+          onClose={() => setAdding(null)}
+          onPick={(card) => {
+            setEditor({ session: null, stageId: adding.stageId, card });
+            setAdding(null);
+          }}
+        />
+      )}
+
       {editor && (
         <SessionEditor
           key={editor.session?.id ?? `new-${editor.stageId}`}
+          card={editor.card ?? null}
           unit={unit}
           session={editor.session}
           stageId={editor.stageId}

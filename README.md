@@ -5,7 +5,7 @@
 
 개발 계획은 [docs/PLAN.md](docs/PLAN.md)에 있습니다.
 
-## 현재 상태 (v0.2.0)
+## 현재 상태 (v0.10.0)
 
 - 교육과정 데이터: 영역 4개, 주제책 16권, 성취기준 48개(교육부 고시 원문, 해설·적용 시 고려 사항 포함), 단원 개발 도구 8종, 교과별 교수학습 모형
 - 앱 화면: 학기별 주제책과 대응 성취기준 보기
@@ -72,6 +72,7 @@ GitHub Actions에서도 `main`에 푸시할 때마다 빌드되며, 실행 결�
 ```
 data/curriculum/            교육과정 데이터(JSON)와 스키마
 data/plays/                 놀이 카드(JSON)와 스키마
+data/activities/            활동 카드(JSON)와 스키마
 data/evaluation/            평어 템플릿·금지 표현(JSON)과 스키마
 scripts/                    데이터 검증 스크립트
 src/                        화면(React + TypeScript). src/records/ 관찰 기록·포트폴리오, src/units/ 단원 빌더, src/board/ 칠판 모드, src/reports/ 학부모 리포트, src/evaluation/ 평어 초안

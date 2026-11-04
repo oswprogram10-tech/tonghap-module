@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { errorText } from '../records/api';
 import { RecordsGate, type RecordsCtx } from '../records/useRecords';
 import { topicTitle } from '../records/util';
+import ActivityManager from './ActivityManager';
 import { unitsApi, type UnitSummary } from './api';
 import RequirementBadges from './Badges';
 import NewUnit from './NewUnit';
@@ -12,7 +13,7 @@ export default function UnitsView() {
   return <RecordsGate what="단원 빌더">{(ctx) => <UnitsPanel ctx={ctx} />}</RecordsGate>;
 }
 
-type Screen = { kind: 'list' } | { kind: 'new' } | { kind: 'board'; unitId: string };
+type Screen = { kind: 'list' } | { kind: 'new' } | { kind: 'cards' } | { kind: 'board'; unitId: string };
 
 function UnitsPanel({ ctx }: { ctx: RecordsCtx }) {
   const { cls, classes } = ctx;
@@ -50,6 +51,8 @@ function UnitsPanel({ ctx }: { ctx: RecordsCtx }) {
             setScreen({ kind: 'board', unitId: u.id });
           }}
         />
+      ) : screen.kind === 'cards' ? (
+        <ActivityManager cls={cls} onClose={() => setScreen({ kind: 'list' })} />
       ) : screen.kind === 'board' ? (
         <UnitBoard
           key={screen.unitId}
@@ -83,6 +86,9 @@ function UnitsPanel({ ctx }: { ctx: RecordsCtx }) {
             )}
             <button className="diag-secondary" aria-pressed={showArchived} onClick={() => setShowArchived((v) => !v)}>
               {showArchived ? '보관함 닫기' : '보관함 보기'}
+            </button>
+            <button className="diag-secondary" onClick={() => setScreen({ kind: 'cards' })}>
+              활동 카드 관리
             </button>
             <button className="diag-primary" onClick={() => setScreen({ kind: 'new' })}>
               새 단원

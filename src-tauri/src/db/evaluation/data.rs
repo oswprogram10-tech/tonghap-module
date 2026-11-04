@@ -150,9 +150,12 @@ pub fn forbidden() -> &'static Forbidden {
 // ---------- 교육과정 ----------
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TopicBookInfo {
     pub id: String,
     pub title: String,
+    pub area: i64,
+    pub standard_index: i64,
 }
 
 #[derive(Debug, Deserialize)]

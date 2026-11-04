@@ -2,6 +2,7 @@
 //!
 //! DB 로직은 `&Connection`을 받는 순수 함수로 두고, `#[tauri::command]`는 얇게 감싼다.
 
+pub mod activities;
 pub mod attachments;
 pub mod classes;
 pub mod evaluation;
