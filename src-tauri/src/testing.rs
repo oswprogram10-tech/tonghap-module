@@ -13,8 +13,13 @@ pub use crate::llm_server::{http, LlmError};
 // 성능 점검(`src-tauri/tests/perf.rs`)이 쓰는 통로. 설계: docs/design/16-year-scale-performance.md
 pub use crate::backup::format as backup_format;
 pub use crate::backup::{BackupProgress, Throttle, PROGRESS_MIN_INTERVAL};
+pub use crate::db::key::DbKey;
+pub use crate::db::media::MediaKey;
 pub use crate::db::testing::{seed_year, SeedOpts, SeedSummary};
 pub use crate::db::open_full;
 pub use crate::db::{activities, habits, migrations, observations, portfolio, prepare, reports, units};
 pub use crate::db::evaluation::bundle::build as evidence_bundle;
 pub use crate::stt::reset_pending;
+
+// 임베딩 엔진 통합 테스트(`tests/engines.rs`)가 쓰는 통로. 설계: docs/design/22-embedding-search.md
+pub use crate::embed::{cosine as embed_cosine, embed_texts, group_questions, parse_embeddings, request_body as embed_request_body, server_args as embed_server_args, EnginePaths as EmbedPaths, DIM as EMBED_DIM, MAX_PASSAGE_CHARS, PASSAGE_PREFIX, QUERY_PREFIX};

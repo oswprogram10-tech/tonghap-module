@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { mediaUrl } from '../lib/media';
 import { saveFile } from '../lib/dialogs';
 import { errorText, type ClassInfo, type Student } from '../records/api';
 import { formatDate, shorten, topicTitle, topicsOfGrade } from '../records/util';
@@ -210,7 +210,7 @@ export default function ReportEditor({ cls, student, topicId, onClose }: { cls: 
                 const on = sel.attachmentIds.includes(p.id);
                 return (
                   <label key={p.id} className={on ? 'rp-photo on' : 'rp-photo'}>
-                    <img src={convertFileSrc(p.absPath)} alt={`${formatDate(p.at)} 사진`} />
+                    <img src={mediaUrl(p.id)} alt={`${formatDate(p.at)} 사진`} />
                     <span className="rp-photo-row">
                       <input type="checkbox" checked={on} disabled={!on && photoFull} onChange={() => togglePhoto(p.id)} aria-label={`${formatDate(p.at)} 사진 넣기`} />
                       <span>{formatDate(p.at)}</span>

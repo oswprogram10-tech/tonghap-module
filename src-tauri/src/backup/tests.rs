@@ -28,8 +28,9 @@ fn seeded(name: &str) -> (PathBuf, Mutex<Connection>) {
     students::import(&mut conn, &c.id, "1 가\n2 나\n3 다").unwrap();
     let ids: Vec<String> = students::list(&conn, &c.id, true).unwrap().into_iter().map(|s| s.id).collect();
     let o = observations::create(&mut conn, &unused_media(), &input(&c.id, &[&ids[0]])).unwrap();
-    attachments::add_bytes(&conn, &media.0, &o.id, "audio", "audio/webm", b"first-audio-bytes").unwrap();
-    attachments::add_bytes(&conn, &media.0, &o.id, "audio", "audio/ogg", &[7u8; 5000]).unwrap();
+    let mkey = crate::db::media::load_key(&dir).unwrap();
+    attachments::add_bytes(&conn, &media.0, &mkey, &o.id, "audio", "audio/webm", b"first-audio-bytes").unwrap();
+    attachments::add_bytes(&conn, &media.0, &mkey, &o.id, "audio", "audio/ogg", &[7u8; 5000]).unwrap();
     (dir, Mutex::new(conn))
 }
 
@@ -43,7 +44,15 @@ fn attachment_files(db: &Mutex<Connection>, data: &Path) -> Vec<(String, Vec<u8>
     let conn = db.lock().unwrap();
     let mut stmt = conn.prepare("SELECT rel_path FROM attachments ORDER BY rel_path").unwrap();
     let rels: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
-    rels.into_iter().map(|r| (r.clone(), std::fs::read(attachments::abs_path(&data.join("media"), &r)).unwrap())).collect()
+    let key = crate::db::media::load_key(data);
+    // 디스크에는 암호문이므로 풀어서 비교한다(사본마다 nonce가 달라 바이트가 다르다).
+    rels.into_iter().map(|r| (r.clone(), crate::db::media::read_plain(key.as_ref(), &attachments::abs_path(&data.join("media"), &r), &r).unwrap())).collect()
+}
+
+/// 디스크에 있는 첨부 파일이 모두 `TGM1` 암호문인지.
+fn media_all_encrypted(data: &Path) -> bool {
+    let files = crate::db::media::list_files(&data.join("media"));
+    !files.is_empty() && crate::db::media::count_state(&data.join("media")) == (files.len() as u64, 0)
 }
 
 fn make_backup(db: &Mutex<Connection>, data: &Path) -> PathBuf {
@@ -316,7 +325,8 @@ fn restore_keeps_previous_data_and_only_three_before_restore_folders() {
     let old = &first[0];
     assert!(old.join("tonghap.db").is_file());
     for (rel, bytes) in &old_files {
-        assert_eq!(&std::fs::read(attachments::abs_path(&old.join("media"), rel)).unwrap(), bytes);
+        let key = crate::db::media::load_key(&target);
+        assert_eq!(&crate::db::media::read_plain(key.as_ref(), &attachments::abs_path(&old.join("media"), rel), rel).unwrap(), bytes);
     }
     // 보관된 이전 DB는 암호화된 채로 옮겨지며 같은 키로 열린다.
     let kept = crypt::open_keyed(&old.join("tonghap.db"), &key_of(&target)).unwrap();
@@ -880,7 +890,7 @@ fn restore_while_conversion_was_postponed_encrypts_the_new_db_and_the_kept_old_o
         std::fs::create_dir_all(dir.join("media")).unwrap();
         let mut c = Connection::open(dir.join("tonghap.db")).unwrap();
         crate::db::prepare(&c).unwrap();
-        crate::db::testing::seed_year(&mut c, &dir.join("media"), &crate::db::testing::SeedOpts { seed: 3, students: 4, observations: 10, attachments: 0, units: 2, sessions: 6, habits: 1, habit_days: 5, parent_reports: 1, big_unit_sessions: 3 }).unwrap();
+        crate::db::testing::seed_year(&mut c, &dir.join("media"), &crate::db::media::test_key(), &crate::db::testing::SeedOpts { seed: 3, students: 4, observations: 10, attachments: 0, units: 2, sessions: 6, habits: 1, habit_days: 5, parent_reports: 1, big_unit_sessions: 3 }).unwrap();
     }
     struct NoExport;
     impl crypt::ConvertOps for NoExport {
@@ -915,4 +925,159 @@ fn cleanup_removes_temp_folders_left_by_a_crash() {
     assert!(!dir.join(".backup-tmp").exists() && !dir.join(restore::STAGING).exists());
     assert!(dir.join("media").exists());
     cleanup_leftovers(&dir); // 없어도 오류 없이 지나간다
+}
+
+// ---------- 사진·음성 암호화(설계 21) ----------
+
+#[test]
+fn backup_vault_keeps_media_plain_with_plain_hashes_while_disk_stays_encrypted() {
+    let (src, src_db) = seeded("media-vault");
+    assert!(media_all_encrypted(&src), "저장된 첨부는 디스크에서 암호문");
+    let on_disk = attachment_files(&src_db, &src);
+    let file = make_backup(&src_db, &src);
+    let (m, files) = unpack(&file);
+    for (rel, plain) in &on_disk {
+        let got = &files.iter().find(|(n, _)| n == &format!("media/{rel}")).unwrap().1;
+        assert_eq!(got, plain, "보관함 안은 평문");
+        assert_ne!(&got[..4.min(got.len())], b"TGM1");
+        let e = m.files.iter().find(|f| f.path == format!("media/{rel}")).unwrap();
+        assert_eq!(e.bytes, plain.len() as u64);
+        assert_eq!(e.sha256, hex::encode(<sha2::Sha256 as sha2::Digest>::digest(plain)), "manifest 해시는 평문 기준");
+    }
+    assert!(media_all_encrypted(&src), "백업이 디스크의 첨부를 바꾸지 않는다");
+}
+
+#[test]
+fn backup_still_works_for_media_not_yet_converted() {
+    let (src, src_db) = seeded("media-plainsrc");
+    // 아직 전환되지 않은 평문 첨부 흉내
+    let key = crate::db::media::load_key(&src).unwrap();
+    let plain = attachment_files(&src_db, &src);
+    for (rel, data) in &plain {
+        std::fs::write(attachments::abs_path(&src.join("media"), rel), data).unwrap();
+    }
+    assert_eq!(crate::db::media::count_state(&src.join("media")).0, 0);
+    let file = make_backup(&src_db, &src);
+    let (_, files) = unpack(&file);
+    for (rel, data) in &plain {
+        assert_eq!(&files.iter().find(|(n, _)| n == &format!("media/{rel}")).unwrap().1, data);
+    }
+    let _ = key;
+}
+
+#[test]
+fn backup_fails_cleanly_when_encrypted_media_cannot_be_opened() {
+    let (src, src_db) = seeded("media-nokey");
+    std::fs::remove_file(src.join("db.key")).unwrap();
+    let out = src.parent().unwrap().join("x.tonghap");
+    assert!(create(&src_db, &src, &out, PW, WF, &mut |_| {}).is_err());
+    assert!(!out.exists() && !src.join(".backup-tmp").exists());
+}
+
+#[test]
+fn restore_round_trip_encrypts_media_with_the_current_key() {
+    let (src, src_db) = seeded("media-rt-src");
+    let file = make_backup(&src_db, &src);
+    let (dst, dst_db) = seeded("media-rt-dst");
+    let key_before = std::fs::read(dst.join("db.key")).unwrap();
+    run_restore(&dst_db, &dst, &file, PW).unwrap();
+    assert_eq!(std::fs::read(dst.join("db.key")).unwrap(), key_before);
+    assert!(media_all_encrypted(&dst), "복원된 첨부는 디스크에서 암호문");
+    assert_eq!(attachment_files(&src_db, &src), attachment_files(&dst_db, &dst), "내용은 같다");
+    // 디스크 바이트에는 원래 내용이 없다
+    for (rel, plain) in attachment_files(&dst_db, &dst) {
+        let disk = std::fs::read(attachments::abs_path(&dst.join("media"), &rel)).unwrap();
+        assert!(!disk.windows(plain.len().min(8)).any(|w| w == &plain[..plain.len().min(8)]));
+    }
+    assert!(dir_names(&dst, "").iter().all(|p| !p.to_string_lossy().ends_with(".enc-tmp")));
+}
+
+#[test]
+fn restoring_an_old_plain_backup_results_in_encrypted_media() {
+    // 예전 앱이 만든 평문 첨부 백업: 키가 없는 폴더에서 평문 파일로 만든다.
+    let src = tmp("media-old-src").join("data");
+    std::fs::create_dir_all(src.join("media/2027/03")).unwrap();
+    let old = Connection::open(src.join("tonghap.db")).unwrap();
+    crate::db::prepare(&old).unwrap();
+    old.execute_batch(
+        "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c1', 2027, 1, '1반', 't');
+         INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s1', 'c1', 1, '김하늘', 't');
+         INSERT INTO observations (id, class_id, observed_at, note, created_at, updated_at) VALUES ('o1', 'c1', '2027-03-02T09:00:00+09:00', '메모', 't', 't');
+         INSERT INTO attachments (id, observation_id, kind, rel_path, mime, bytes, created_at) VALUES ('a1', 'o1', 'photo', '2027/03/a1.png', 'image/png', 12, 't');",
+    )
+    .unwrap();
+    std::fs::write(src.join("media/2027/03/a1.png"), b"\x89PNG-old-photo").unwrap();
+    let src_db = Mutex::new(old);
+    let file = make_backup(&src_db, &src);
+    let (target, tdb) = seeded("media-old-target");
+    run_restore(&tdb, &target, &file, PW).unwrap();
+    assert!(media_all_encrypted(&target));
+    let key = crate::db::media::load_key(&target).unwrap();
+    let abs = target.join("media/2027/03/a1.png");
+    assert_eq!(crate::db::media::read_plain(Some(&key), &abs, "2027/03/a1.png").unwrap(), b"\x89PNG-old-photo");
+    assert!(!std::fs::read(&abs).unwrap().windows(4).any(|w| w == b"\x89PNG"));
+}
+
+#[test]
+fn restore_from_a_locked_state_encrypts_media_with_the_new_key() {
+    let (src, src_db) = seeded("media-lk-src");
+    let file = make_backup(&src_db, &src);
+    let (dir, db) = locked_dir("media-lk", |d| std::fs::remove_file(d.join("db.key")).unwrap());
+    run_restore(&db, &dir, &file, PW).unwrap();
+    assert!(media_all_encrypted(&dir));
+    // 새 키(키 파일)로 풀린다
+    assert_eq!(attachment_files(&src_db, &src), attachment_files(&db, &dir));
+}
+
+struct FailingOps(std::cell::Cell<usize>, usize);
+impl crate::db::media::FileOps for FailingOps {
+    fn write(&self, path: &Path, bytes: &[u8]) -> DbResult<()> {
+        self.0.set(self.0.get() + 1);
+        if self.0.get() > self.1 {
+            return Err("주입: 쓰기 실패".to_string());
+        }
+        std::fs::write(path, bytes).map_err(|e| e.to_string())
+    }
+}
+
+#[test]
+fn media_encryption_failure_aborts_the_restore_and_changes_nothing() {
+    let (src, src_db) = seeded("media-fail-src");
+    let file = make_backup(&src_db, &src);
+    // 단위: staging 쪽 전환이 실패하면 오류. 이미 바꾼 파일은 암호문, 못 바꾼 파일은 평문 그대로.
+    let staging = tmp("media-fail-staging");
+    let (_, files) = unpack(&file);
+    for (n, d) in &files {
+        if n.starts_with("media/") {
+            let p = staging.join(n);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, d).unwrap();
+        }
+    }
+    let key = crate::db::media::MediaKey::for_test(5);
+    let before: Vec<_> = crate::db::media::list_files(&staging.join("media")).into_iter().map(|(r, p)| (r, std::fs::read(p).unwrap())).collect();
+    assert_eq!(before.len(), 2);
+    let err = restore::encrypt_staged_media(&staging.join("media"), &key, &FailingOps(Default::default(), 1), &mut |_| {}).unwrap_err();
+    assert!(err.contains("복원하지 않았습니다"), "{err}");
+    let after = crate::db::media::list_files(&staging.join("media"));
+    assert_eq!(after.len(), 2, "임시 파일이 남지 않는다");
+    let plain_left = after.iter().filter(|(r, p)| std::fs::read(p).unwrap() == before.iter().find(|(b, _)| b == r).unwrap().1).count();
+    assert_eq!(plain_left, 1, "실패한 파일은 평문 그대로");
+
+    // 통합: 대상 폴더는 복원이 실패해도 그대로(실패 지점은 swap 이전이라 data를 건드리지 않는다)
+    let (dst, dst_db) = seeded("media-fail-dst");
+    let before_counts = counts(&dst_db);
+    let before_files = attachment_files(&dst_db, &dst);
+    let bad = tmp("media-fail-bad").join("bad.tonghap");
+    {
+        let (mut m, mut fs) = unpack(&file);
+        let i = fs.iter().position(|(n, _)| n.starts_with("media/")).unwrap();
+        fs[i].1.push(1); // 해시 불일치 → 복원 거부
+        m.files.iter_mut().for_each(|_| {});
+        craft(&bad, &m, &fs);
+    }
+    assert!(run_restore(&dst_db, &dst, &bad, PW).is_err());
+    assert_eq!(counts(&dst_db), before_counts);
+    assert_eq!(attachment_files(&dst_db, &dst), before_files);
+    assert!(media_all_encrypted(&dst));
 }

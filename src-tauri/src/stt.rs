@@ -513,7 +513,7 @@ mod tests {
 
     fn audio(f: &Fixture) -> String {
         std::fs::create_dir_all(&f.media).unwrap();
-        attachments::add_bytes(&f.conn.lock().unwrap(), &f.media, &f.obs, "audio", "audio/webm", b"abc").unwrap().id
+        attachments::add_bytes(&f.conn.lock().unwrap(), &f.media, &crate::db::media::test_key(), &f.obs, "audio", "audio/webm", b"abc").unwrap().id
     }
 
     fn queue_one(f: &Fixture, id: &str) {
@@ -611,7 +611,7 @@ mod tests {
         let src = tmp("photo").join("a.png");
         std::fs::write(&src, b"img").unwrap();
         std::fs::create_dir_all(&f.media).unwrap();
-        let p = attachments::add_file(&f.conn.lock().unwrap(), &f.media, &f.obs, src.to_str().unwrap()).unwrap();
+        let p = attachments::add_file(&f.conn.lock().unwrap(), &f.media, &crate::db::media::test_key(), &f.obs, src.to_str().unwrap()).unwrap();
         assert!(prepare_job(&f.conn.lock().unwrap(), &f.media, &p.id, &good).unwrap_err().contains("음성"));
 
         let id = audio(&f);

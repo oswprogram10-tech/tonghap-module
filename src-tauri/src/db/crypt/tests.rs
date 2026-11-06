@@ -21,7 +21,7 @@ fn seed_plain(dir: &Path) -> Vec<(String, i64)> {
     let mut conn = Connection::open(dir.join(DB_NAME)).unwrap();
     conn.pragma_update(None, "journal_mode", "WAL").unwrap();
     crate::db::prepare(&conn).unwrap();
-    seed_year(&mut conn, &dir.join("media"), &small()).unwrap();
+    seed_year(&mut conn, &dir.join("media"), &crate::db::media::test_key(), &small()).unwrap();
     let c = table_counts(&conn).unwrap();
     drop(conn);
     c

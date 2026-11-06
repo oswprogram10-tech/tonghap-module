@@ -81,6 +81,9 @@ pub fn server_args(model: &Path, port: u16, gpu_layers: u32) -> Vec<String> {
     ]
 }
 
+/// 서버 종류마다 다른 실행 인자를 만드는 함수(평어 초안용 `server_args`, 임베딩용 `crate::embed::server_args`).
+pub type ArgsFn = fn(&Path, u16, u32) -> Vec<String>;
+
 #[cfg_attr(not(test), allow(dead_code))]
 pub struct LaunchSpec {
     pub program: PathBuf,
@@ -131,6 +134,9 @@ pub struct LlmServer {
     ready_timeout: Duration,
     ready_poll: Duration,
     idle: Duration,
+    /// 실행 인자를 만드는 함수와, 시도할 GPU 층 수(앞에서부터 차례로).
+    args: ArgsFn,
+    gpu_attempts: &'static [u32],
     closing: AtomicBool,
     /// 화면의 「취소」. 작업을 시작할 때 내린다.
     pub cancel: AtomicBool,
@@ -159,10 +165,19 @@ impl LlmServer {
             ready_timeout: READY_TIMEOUT,
             ready_poll: READY_POLL,
             idle: IDLE_LIMIT,
+            args: server_args,
+            gpu_attempts: &[GPU_LAYERS, 0],
             closing: AtomicBool::new(false),
             cancel: AtomicBool::new(false),
             one_at_a_time: Mutex::new(()),
         }
+    }
+
+    /// 실행 인자와 GPU 시도 순서를 바꾼다(임베딩 서버는 CPU만 쓴다).
+    pub fn with_args(mut self, args: ArgsFn, gpu_attempts: &'static [u32]) -> LlmServer {
+        self.args = args;
+        self.gpu_attempts = gpu_attempts;
+        self
     }
 
     /// 실제 프로세스·HTTP를 쓰는 서버.
@@ -224,12 +239,12 @@ impl LlmServer {
             old.proc.kill();
         }
         let mut last_error = String::new();
-        for gpu_layers in [GPU_LAYERS, 0] {
+        for &gpu_layers in self.gpu_attempts {
             if self.closing.load(Ordering::SeqCst) {
                 return Err(LlmError::Unavailable("앱을 닫는 중입니다".to_string()));
             }
             let port = (self.pick_port)().map_err(LlmError::Unavailable)?;
-            let spec = LaunchSpec { program: program.to_path_buf(), args: server_args(model, port, gpu_layers), port, gpu_layers, log: log.clone() };
+            let spec = LaunchSpec { program: program.to_path_buf(), args: (self.args)(model, port, gpu_layers), port, gpu_layers, log: log.clone() };
             let mut proc = match (self.launch)(&spec) {
                 Ok(p) => p,
                 Err(e) => {

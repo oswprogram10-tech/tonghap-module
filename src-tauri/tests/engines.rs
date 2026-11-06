@@ -8,6 +8,7 @@
 //! - `TONGHAP_ENGINES_DIR`: `llama/`, `whisper/`를 품은 폴더(`src-tauri/resources/engines`). 그 옆의 `samples/jfk.wav`를 쓴다.
 //! - `TONGHAP_TEST_WHISPER_MODEL`: whisper 모델 파일(ggml-tiny-q5_1.bin)
 //! - `TONGHAP_TEST_LLM_MODEL`: 언어 모델 파일(Qwen3-0.6B-Q8_0.gguf)
+//! - `TONGHAP_TEST_EMBED_MODEL`: 뜻 임베딩 모델 파일(multilingual-e5-small-q8_0.gguf). 설계 22의 임베딩 테스트만 쓴다.
 //! - `TONGHAP_TEST_LOG_DIR`(선택): llama-server 로그를 둘 폴더. 없으면 임시 폴더.
 //! - `TONGHAP_REQUIRE_ENGINES=1`(선택): 위 필수 변수가 없으면 건너뛰지 않고 실패(워크플로가 쓴다).
 //!
@@ -313,4 +314,133 @@ fn llama_server_answers_app_request_with_evidence_ids() {
         std::thread::sleep(Duration::from_millis(200));
     }
     assert!(!port_open(port), "stop() 뒤에도 포트 {port}가 열려 있음(프로세스가 남음)");
+}
+
+// ---------- 뜻 임베딩 서버(설계 22) ----------
+
+/// 임베딩 테스트 준비: 엔진 폴더와 `TONGHAP_TEST_EMBED_MODEL`. 없으면 건너뛰고, `TONGHAP_REQUIRE_ENGINES=1`이면 실패한다.
+fn setup_embed(test: &str) -> Option<(Env, PathBuf)> {
+    let env = setup(test, false, false)?;
+    match env_path("TONGHAP_TEST_EMBED_MODEL") {
+        Some(model) => {
+            assert!(model.is_file(), "임베딩 모델이 없습니다: {}", model.display());
+            Some((env, model))
+        }
+        None => {
+            let msg = format!("{test}: 환경 변수가 없습니다: TONGHAP_TEST_EMBED_MODEL");
+            if std::env::var("TONGHAP_REQUIRE_ENGINES").is_ok_and(|v| v == "1") {
+                panic!("{msg}");
+            }
+            println!("건너뜀 - {msg}");
+            None
+        }
+    }
+}
+
+fn norm(v: &[f32]) -> f32 {
+    v.iter().map(|x| x * x).sum::<f32>().sqrt()
+}
+
+#[test]
+#[ignore = "윈도우 엔진과 모델이 필요함(환경 변수 TONGHAP_*)"]
+fn embedding_server_gives_384_dim_vectors_and_orders_by_meaning() {
+    let Some((env, model)) = setup_embed("embedding_server_gives_384_dim_vectors_and_orders_by_meaning") else { return };
+    let program = engine_in(&env.resources(), "llama", "llama-server").unwrap_or_else(|e| panic!("{e}"));
+    let log_dir = env_path("TONGHAP_TEST_LOG_DIR").unwrap_or_else(|| scratch_dir("embed-log"));
+    let log = log_dir.join("embed-server.log");
+    let log_tail = || std::fs::read_to_string(&log).map(|s| tail(&s, 3000)).unwrap_or_else(|_| "(로그 없음)".into());
+
+    // 앱과 같은 방식: 평어 초안 서버와 같은 관리 코드에 임베딩 인자·CPU만 쓰도록 설정.
+    let server = LlmServer::real().with_args(embed_server_args, &[0]);
+    let cancel = AtomicBool::new(false);
+    let started = Instant::now();
+    let port = match server.ensure(&program, &model, Some(log.clone()), &cancel) {
+        Ok(p) => p,
+        Err(e) => panic!("임베딩 서버 시작 실패: {}\n--- 서버 로그 끝 ---\n{}", e.message(), log_tail()),
+    };
+    println!("임베딩 서버 준비: 포트 {port}, {} ms, 로그 {}", started.elapsed().as_millis(), log.display());
+    let (status, body) = http(port, "GET", "/health", None, Duration::from_secs(5), &cancel).expect("/health");
+    assert_eq!(status, 200, "/health: {body}");
+
+    // 1) 앱이 쓰는 엔드포인트와 요청 본문: POST /v1/embeddings, 응답은 data[i].embedding(1차원, 384).
+    let probe = vec![format!("{QUERY_PREFIX}개미는 왜 줄을 서서 가요?"), format!("{PASSAGE_PREFIX}곤충 관찰하기")];
+    let (status, body) = http(port, "POST", "/v1/embeddings", Some(&embed_request_body(&probe).to_string()), Duration::from_secs(60), &cancel).expect("/v1/embeddings");
+    assert_eq!(status, 200, "/v1/embeddings: {}\n--- 서버 로그 끝 ---\n{}", tail(&body, 500), log_tail());
+    let raw: Value = serde_json::from_str(&body).expect("응답 JSON");
+    let data = raw["data"].as_array().unwrap_or_else(|| panic!("data 배열이 없음: {}", tail(&body, 500)));
+    assert_eq!(data.len(), 2);
+    assert_eq!(data[0]["embedding"].as_array().map(Vec::len), Some(EMBED_DIM), "첫 벡터는 {EMBED_DIM}차원 1차원 배열");
+    let parsed = parse_embeddings(&body, 2).unwrap_or_else(|e| panic!("앱의 응답 해석이 실패: {e}"));
+    assert_eq!(parsed.len(), 2);
+
+    // 2) 앱의 임베딩 함수(배치, 접두사 포함)로 의미 순서를 본다.
+    let paths = EmbedPaths { program: program.clone(), model: model.clone() };
+    let insect = format!("{PASSAGE_PREFIX}곤충 관찰하기\n개미나 나비 같은 곤충을 돋보기로 가까이 살펴보고 그림으로 그린다\n곤충, 개미, 관찰");
+    let flag = format!("{PASSAGE_PREFIX}태극기 그리기\n태극기의 모양과 색깔을 살펴보고 크레파스로 그린다\n태극기, 국기, 그리기");
+    let query = format!("{QUERY_PREFIX}개미는 왜 줄을 서서 가요?");
+    let texts = vec![query.clone(), insect.clone(), flag.clone()];
+    let vecs = embed_texts(&server, &paths, Some(log.clone()), &texts).unwrap_or_else(|e| panic!("embed_texts 실패: {e}\n--- 서버 로그 끝 ---\n{}", log_tail()));
+    assert_eq!(vecs.len(), 3);
+    for v in &vecs {
+        assert_eq!(v.len(), EMBED_DIM);
+        assert!((norm(v) - 1.0).abs() < 1e-3, "길이 1이어야 함: {}", norm(v));
+    }
+    let (s_insect, s_flag) = (embed_cosine(&vecs[0], &vecs[1]), embed_cosine(&vecs[0], &vecs[2]));
+    println!("코사인: 질문-곤충 관찰 {s_insect:.4}, 질문-태극기 그리기 {s_flag:.4}");
+    assert!(s_insect > s_flag, "「개미는 왜 줄을 서서 가요?」가 곤충 관찰({s_insect})이 태극기 그리기({s_flag})보다 가까워야 함");
+
+    // 같은 글은 같은 벡터(결정적), 한 번에 16개를 넘는 배치도 순서대로 돌아온다.
+    let again = embed_texts(&server, &paths, Some(log.clone()), &texts[..1]).expect("다시 임베딩");
+    assert!(embed_cosine(&vecs[0], &again[0]) > 0.999, "같은 글의 벡터가 달라짐");
+    let many: Vec<String> = (0..20).map(|i| if i % 2 == 0 { insect.clone() } else { flag.clone() }).collect();
+    let big = embed_texts(&server, &paths, Some(log.clone()), &many).expect("20개 배치");
+    assert_eq!(big.len(), 20);
+    assert!(embed_cosine(&big[0], &vecs[1]) > 0.999 && embed_cosine(&big[1], &vecs[2]) > 0.999, "배치 순서가 뒤섞임");
+
+    // 앱이 허용하는 가장 긴 카드 글(접두사 + 400자)도 문맥(512)을 넘지 않는다.
+    let long_body: String = "개미는 줄을 지어 먹이를 나르고 집을 짓습니다. ".chars().cycle().take(MAX_PASSAGE_CHARS).collect();
+    let long = format!("{PASSAGE_PREFIX}{long_body}");
+    let out = embed_texts(&server, &paths, Some(log.clone()), &[long]).unwrap_or_else(|e| panic!("긴 글 실패: {e}\n--- 서버 로그 끝 ---\n{}", log_tail()));
+    assert_eq!(out[0].len(), EMBED_DIM);
+
+    // 3) 질문 묶기: 개미 질문과 태극기 질문이 한 묶음에 섞이지 않는다.
+    let questions: Vec<String> = [
+        "개미는 왜 줄을 서서 가요?",
+        "개미집은 어떻게 생겼어요?",
+        "개미는 뭘 먹고 살아요?",
+        "태극기는 왜 네모 모양이에요?",
+        "태극기 색깔은 무슨 뜻이에요?",
+        "태극기는 누가 만들었어요?",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let embed_fn = |t: &[String]| embed_texts(&server, &paths, Some(log.clone()), t);
+    let groups = group_questions(&questions, &embed_fn).expect("질문 묶기");
+    for g in &groups {
+        println!("묶음 {}개, 대표 「{}」: {:?}", g.questions.len(), g.representative, g.questions);
+        let ants = g.questions.iter().filter(|q| q.starts_with("개미")).count();
+        assert!(ants == 0 || ants == g.questions.len(), "개미 질문과 태극기 질문이 한 묶음에 섞임: {:?}", g.questions);
+    }
+    assert!(groups.iter().any(|g| g.questions.len() >= 2), "비슷한 질문이 하나도 묶이지 않음");
+
+    // 서버 종료와 프로세스 정리: 포트가 닫혀야 한다.
+    server.stop();
+    assert!(!server.is_running());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while port_open(port) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(!port_open(port), "stop() 뒤에도 포트 {port}가 열려 있음(프로세스가 남음)");
+}
+
+#[test]
+fn embedding_args_and_request_shapes_without_engines() {
+    // 엔진 없이 도는 확인: 앱이 서버에 보내는 인자·본문의 모양.
+    let args = embed_server_args(Path::new("e5.gguf"), 4321, 0);
+    assert!(args.windows(2).any(|w| w == ["--host", "127.0.0.1"]));
+    assert!(args.contains(&"--embedding".to_string()));
+    assert!(args.windows(2).any(|w| w == ["--pooling", "mean"]));
+    let body = embed_request_body(&["query: 가".to_string()]);
+    assert_eq!(body["input"][0], "query: 가");
 }

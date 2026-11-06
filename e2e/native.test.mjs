@@ -115,7 +115,7 @@ describe('화면 E2E 2부(대화상자·마이크)', { concurrency: false }, () 
     await createClassWithRoster(driver, 'E2E반', STUDENTS);
   });
 
-  scenario('1. 사진 첨부: 대화상자 대체로 고른 사진이 asset 주소로 실제로 그려진다', async () => {
+  scenario('1. 사진 첨부: 대화상자 대체로 고른 사진이 tgmedia 주소로 실제로 그려진다', async () => {
     const png = makePng(path.join(filesDir, 'photo.png'));
     queueDialog(dialogDir, 'open', [png]);
     await selectStudent(driver, STUDENTS[0]);
@@ -126,7 +126,7 @@ describe('화면 E2E 2부(대화상자·마이크)', { concurrency: false }, () 
     await openCard(PHOTO_MEMO);
     const img = await waitImageLoaded(driver, `${EDIT_DIALOG}//img[@alt='관찰 사진']`);
     const src = await img.getAttribute('src');
-    assert.match(src, /asset\.localhost|^asset:/, `asset 프로토콜 주소가 아님: ${src}`);
+    assert.match(src, /tgmedia\.localhost|^tgmedia:/, `tgmedia 프로토콜 주소가 아님: ${src}`);
     assert.equal(await driver.executeScript('return arguments[0].naturalWidth', img), 64);
     await closeEditDialog();
     await expectNoErrors();
@@ -222,7 +222,7 @@ describe('화면 E2E 2부(대화상자·마이크)', { concurrency: false }, () 
       await closeEditDialog();
       await openCard(VOICE_MEMO);
       const audio = await waitVisible(driver, `${EDIT_DIALOG}//audio`);
-      assert.match(await audio.getAttribute('src'), /asset\.localhost|^asset:/);
+      assert.match(await audio.getAttribute('src'), /tgmedia\.localhost|^tgmedia:/);
       await closeEditDialog();
       assert.ok(filesUnder(path.join(dataSub, 'media')).length >= 2, '복원된 미디어 폴더에 첨부 파일이 없음');
       await expectNoErrors();

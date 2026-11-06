@@ -97,7 +97,7 @@ fn bundle_uses_alias_and_never_contains_other_students_names() {
     );
     let src = tmp("src").join("a.webm");
     std::fs::write(&src, b"audio").unwrap();
-    let au = attachments::add_bytes(&cx.conn, &cx.media, &o.id, "audio", "audio/webm", b"audio").unwrap();
+    let au = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &o.id, "audio", "audio/webm", b"audio").unwrap();
     attachments::set_transcript(&cx.conn, &cx.media, &au.id, "서준이가 별은 왜 반짝여요? 하고 물었어요. 지우는 몰랐어요").unwrap();
     obs(&mut cx, "2027-04-11", "박서준과 짝이 되어 돋보기로 관찰함");
     obs(&mut cx, "2027-04-12", "교실을 살펴봄");
@@ -203,12 +203,12 @@ fn bundle_quote_only_from_done_transcripts_and_limited_to_80_chars() {
     let o2 = obs(&mut cx, "2027-04-02", "자막 만드는 중");
     let o3 = obs(&mut cx, "2027-04-03", "");
     let long = "가".repeat(120);
-    let a1 = attachments::add_bytes(&cx.conn, &cx.media, &o1.id, "audio", "audio/webm", b"x").unwrap();
+    let a1 = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &o1.id, "audio", "audio/webm", b"x").unwrap();
     attachments::set_transcript(&cx.conn, &cx.media, &a1.id, &long).unwrap();
-    let a2 = attachments::add_bytes(&cx.conn, &cx.media, &o2.id, "audio", "audio/webm", b"x").unwrap();
+    let a2 = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &o2.id, "audio", "audio/webm", b"x").unwrap();
     cx.conn.execute("UPDATE attachments SET transcript = '아직 확인 안 된 자막', transcript_status = 'running' WHERE id = ?1", [&a2.id]).unwrap();
     // 메모는 없지만 자막이 있는 기록은 자막을 근거로 쓴다.
-    let a3 = attachments::add_bytes(&cx.conn, &cx.media, &o3.id, "audio", "audio/webm", b"x").unwrap();
+    let a3 = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &o3.id, "audio", "audio/webm", b"x").unwrap();
     attachments::set_transcript(&cx.conn, &cx.media, &a3.id, "개미가 줄을 서서 가요").unwrap();
     let b = bundle_of(&cx, 0, "슬");
     let quote_of = |oid: &str| b.evidence.iter().find_map(|e| match e {
@@ -362,7 +362,7 @@ fn different_students_get_varied_phrasings() {
 fn note_memo_and_quote_are_woven_into_sentences() {
     let mut cx = seed();
     let o = obs_full(&mut cx, &[0], "2027-04-01", "g1s1-exploration", "친구를 도와줌", &["[2슬01-01]"], &["질문"]);
-    let a = attachments::add_bytes(&cx.conn, &cx.media, &o.id, "audio", "audio/webm", b"x").unwrap();
+    let a = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &o.id, "audio", "audio/webm", b"x").unwrap();
     attachments::set_transcript(&cx.conn, &cx.media, &a.id, "별은 왜 반짝여요?").unwrap();
     seed_inquiry(&mut cx, 3);
     let b = bundle_of(&cx, 0, "슬");
@@ -396,7 +396,7 @@ fn generated_drafts_pass_every_automatic_check() {
     let mut cx = seed();
     let ids = seed_inquiry(&mut cx, 8);
     let o = observations::get(&cx.conn, &cx.media, &ids[0]).unwrap();
-    let a = attachments::add_bytes(&cx.conn, &cx.media, &o.id, "audio", "audio/webm", b"x").unwrap();
+    let a = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &o.id, "audio", "audio/webm", b"x").unwrap();
     attachments::set_transcript(&cx.conn, &cx.media, &a.id, "개미는 어디로 가요?").unwrap();
     let mut checked = 0;
     for subject in ["바", "슬", "즐"] {
@@ -745,7 +745,7 @@ fn seed_all_groups(cx: &mut Cx) -> Vec<String> {
     }
     // 자막만 있는 기록(메모 없음)
     let q = obs_full(cx, &[0], "2027-05-01", "g1s1-school", "", &["[2슬01-01]", "[2바01-01]", "[2즐01-01]"], &["질문"]);
-    let a = attachments::add_bytes(&cx.conn, &cx.media, &q.id, "audio", "audio/webm", b"x").unwrap();
+    let a = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &q.id, "audio", "audio/webm", b"x").unwrap();
     attachments::set_transcript(&cx.conn, &cx.media, &a.id, "개미는 어디로 가요?").unwrap();
     ids.push(q.id);
     ids
@@ -782,7 +782,7 @@ fn every_generated_observation_sentence_contains_a_content_word_of_its_note_or_q
 fn quote_only_observation_gets_a_quote_sentence() {
     let mut cx = seed();
     let q = obs_full(&mut cx, &[0], "2027-04-01", "g1s1-exploration", "", &["[2슬01-01]"], &["질문"]);
-    let a = attachments::add_bytes(&cx.conn, &cx.media, &q.id, "audio", "audio/webm", b"x").unwrap();
+    let a = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &q.id, "audio", "audio/webm", b"x").unwrap();
     attachments::set_transcript(&cx.conn, &cx.media, &a.id, "별은 왜 반짝여요?").unwrap();
     // 메모를 풀 수 없는 기록과 메모가 있는 기록
     obs_full(&mut cx, &[0], "2027-04-02", "g1s1-school", "알 수 없는 말투로 쓴 메모입니다만", &["[2슬01-01]"], &["탐구"]);
@@ -985,7 +985,7 @@ mod llm_tests {
         let mut cx = seed();
         obs_full(&mut cx, &[0, 1], "2027-04-10", "g1s1-exploration", "김하늘이 박서준이랑 함께 별을 관찰함. 이지우가 도와줌", &["[2슬01-01]"], &["탐구", "질문"]);
         let o = obs_full(&mut cx, &[0], "2027-04-11", "g1s1-school", "하늘이가 서준이와 짝이 되어 돋보기로 관찰함", &["[2슬01-01]"], &["탐구"]);
-        let au = attachments::add_bytes(&cx.conn, &cx.media, &o.id, "audio", "audio/webm", b"audio").unwrap();
+        let au = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &o.id, "audio", "audio/webm", b"audio").unwrap();
         attachments::set_transcript(&cx.conn, &cx.media, &au.id, "서준이가 별은 왜 반짝여요? 하고 물었어요. 지우는 몰랐어요").unwrap();
         obs(&mut cx, "2027-04-12", "교실을 살펴봄");
         let job = llm::prepare(&cx.conn, &cx.media, &input(&cx, 0, "슬"), MODEL).unwrap();

@@ -7,12 +7,12 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "validate:data": "node scripts/validate-curriculum.mjs && node scripts/validate-plays.mjs && node scripts/validate-evaluation.mjs && node scripts/validate-synthetic.mjs && node scripts/validate-style-examples.mjs && node scripts/validate-activities.mjs && node scripts/validate-third-party-licenses.mjs && node scripts/check-changelog.mjs",
+    "validate:data": "node scripts/validate-curriculum.mjs && node scripts/validate-plays.mjs && node scripts/validate-evaluation.mjs && node scripts/validate-synthetic.mjs && node scripts/validate-style-examples.mjs && node scripts/validate-activities.mjs && node scripts/validate-voice.mjs && node scripts/validate-third-party-licenses.mjs && node scripts/check-changelog.mjs",
     "tauri": "tauri",
     "licenses": "node scripts/collect-licenses.mjs",
     "licenses:full": "node scripts/build-third-party-licenses.mjs",
     "fetch:engines": "node scripts/fetch-engines.mjs",
-    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test ml/synth/generate-bundles.test.mjs src/board/random.test.mjs src/print/layouts.test.mjs ml/stt/metrics.test.mjs src/stt/wav.test.mjs src/lib/dialogs.test.mjs src/lib/clipboard.test.mjs e2e/zip.test.mjs scripts/collect-licenses.test.mjs scripts/third-party-licenses.test.mjs scripts/changelog.test.mjs",
+    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test ml/synth/generate-bundles.test.mjs src/board/random.test.mjs src/board/cues.test.mjs src/print/layouts.test.mjs ml/stt/metrics.test.mjs src/stt/wav.test.mjs src/lib/dialogs.test.mjs src/lib/clipboard.test.mjs src/lib/media.test.mjs e2e/zip.test.mjs scripts/collect-licenses.test.mjs scripts/third-party-licenses.test.mjs scripts/changelog.test.mjs",
     "e2e": "node --test --test-concurrency=1 e2e/app.test.mjs e2e/native.test.mjs e2e/eval.test.mjs"
   },
   "dependencies": {

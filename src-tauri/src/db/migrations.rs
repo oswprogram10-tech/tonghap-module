@@ -249,6 +249,17 @@ CREATE TABLE evaluation_combined (
 );
 CREATE INDEX idx_evaluation_combined_class ON evaluation_combined(class_id);
 "#,
+    // 10: 활동 카드 글의 뜻 벡터(설계 22). 학생 질문 벡터는 저장하지 않는다.
+    r#"
+CREATE TABLE embeddings (
+  kind TEXT NOT NULL,
+  ref_id TEXT NOT NULL,
+  model TEXT NOT NULL,
+  text_hash TEXT NOT NULL,
+  vec BLOB NOT NULL,
+  PRIMARY KEY (kind, ref_id, model)
+);
+"#,
 ];
 
 pub fn latest_version() -> i64 {
@@ -285,11 +296,11 @@ mod tests {
         apply(&conn).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, latest_version());
-        assert_eq!(v, 9);
+        assert_eq!(v, 10);
         for table in [
             "classes", "students", "observations", "observation_students", "observation_standards", "observation_tags", "attachments", "settings",
             "units", "unit_stages", "unit_sessions", "unit_session_standards", "custom_plays", "play_log", "habits", "habit_checks", "parent_reports",
-            "evaluation_drafts", "custom_activities", "evaluation_combined",
+            "evaluation_drafts", "custom_activities", "evaluation_combined", "embeddings",
         ] {
             let n: i64 = conn
                 .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0))
@@ -491,10 +502,9 @@ mod tests {
                VALUES ('d', 'c', 's', '슬', '2027-03-02', '2027-07-18', '[]', 't', 't');",
         )
         .unwrap();
-        apply(&conn).unwrap();
+        apply_up_to(&conn, 9).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(v, latest_version());
-        assert_eq!(latest_version(), 9);
+        assert_eq!(v, 9);
         let n: i64 = conn.query_row("SELECT count(*) FROM evaluation_drafts", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 1);
         let insert = "INSERT INTO evaluation_combined (id, class_id, student_id, period_from, period_to, text, source_hash, created_at, updated_at)
@@ -506,5 +516,30 @@ mod tests {
         conn.execute("DELETE FROM students WHERE id = 's'", []).unwrap();
         let n: i64 = conn.query_row("SELECT count(*) FROM evaluation_combined", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn migration_10_keeps_version_9_data_and_adds_embeddings() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        apply_up_to(&conn, 9).unwrap();
+        conn.execute_batch(
+            "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c', 2027, 1, '1반', 't');
+             INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s', 'c', 1, '김하늘', 't');
+             INSERT INTO custom_activities (id, data, created_at, updated_at) VALUES ('custom-1', '{}', 't', 't');",
+        )
+        .unwrap();
+        apply(&conn).unwrap();
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, latest_version());
+        assert_eq!(latest_version(), 10);
+        let name: String = conn.query_row("SELECT name FROM students WHERE id = 's'", [], |r| r.get(0)).unwrap();
+        assert_eq!(name, "김하늘");
+        let n: i64 = conn.query_row("SELECT count(*) FROM custom_activities", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        let insert = "INSERT INTO embeddings (kind, ref_id, model, text_hash, vec) VALUES ('card', ?1, ?2, 'h', x'00')";
+        conn.execute(insert, ["a", "e5-small-q8"]).unwrap();
+        conn.execute(insert, ["a", "other"]).unwrap();
+        assert!(conn.execute(insert, ["a", "e5-small-q8"]).is_err(), "같은 카드·모델은 하나만");
     }
 }

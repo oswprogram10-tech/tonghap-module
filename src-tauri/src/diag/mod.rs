@@ -23,6 +23,8 @@ pub type DiagResult<T> = Result<T, String>;
 pub enum ModelKind {
     Llm,
     Stt,
+    /// 뜻 임베딩(질문 묶기·활동 추천). 측정(벤치)에는 쓰지 않는다.
+    Embed,
 }
 
 /// 측정용 모델 목록. 해시는 Hugging Face LFS의 SHA-256.
@@ -70,6 +72,16 @@ pub const MODELS: &[ModelSpec] = &[
         size: 2_497_280_256,
         sha256: "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
         license: "Apache-2.0",
+    },
+    ModelSpec {
+        id: "e5-small-q8",
+        label: "질문 묶기·활동 추천 (multilingual-e5-small, Q8_0)",
+        kind: ModelKind::Embed,
+        file_name: "multilingual-e5-small-q8_0.gguf",
+        url: "https://huggingface.co/TwinSunsLLC/multilingual-e5-small-gguf/resolve/main/multilingual-e5-small-q8_0.gguf",
+        size: 132_439_008,
+        sha256: "e011debc1208e31bf7b6aebee2d9fc8bd2ca11694a77ed66ac9d0c9d0a877c93",
+        license: "MIT",
     },
     ModelSpec {
         id: "whisper-base",
@@ -144,4 +156,31 @@ pub async fn diag_save_report(app: AppHandle, report: serde_json::Value, summary
     std::fs::write(&txt_path, txt).map_err(|e| format!("결과 저장 실패({}): {e}", txt_path.display()))?;
 
     Ok(json_path.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embedding_model_is_listed_with_the_verified_hash() {
+        let spec = model_spec(crate::embed::MODEL_ID).unwrap();
+        assert!(spec.kind == ModelKind::Embed);
+        assert_eq!(spec.sha256, "e011debc1208e31bf7b6aebee2d9fc8bd2ca11694a77ed66ac9d0c9d0a877c93");
+        assert_eq!(spec.size, 132_439_008);
+        assert_eq!(spec.license, "MIT");
+        assert!(spec.url.starts_with("https://huggingface.co/TwinSunsLLC/multilingual-e5-small-gguf/"));
+        assert!(spec.url.ends_with(spec.file_name));
+    }
+
+    #[test]
+    fn model_ids_are_unique_and_embedding_is_not_a_benchmark_model() {
+        let mut ids: Vec<&str> = MODELS.iter().map(|m| m.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), MODELS.len());
+        // 평어 초안 모델 설정은 언어 모델만 받는다.
+        assert!(MODELS.iter().filter(|m| m.kind == ModelKind::Llm).all(|m| m.id != crate::embed::MODEL_ID));
+        assert_eq!(serde_json::to_string(&ModelKind::Embed).unwrap(), "\"embed\"");
+    }
 }

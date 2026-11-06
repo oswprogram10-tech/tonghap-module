@@ -1,5 +1,5 @@
 import { forwardRef, useLayoutEffect, useRef } from 'react';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { mediaUrl } from '../lib/media';
 import type { HabitSummary } from '../board/api';
 import { curriculum } from '../curriculum';
 import { shorten, topicTitle } from '../records/util';
@@ -149,7 +149,7 @@ const ReportSheet = forwardRef<HTMLDivElement, { data: SheetData }>(function Rep
           <h2>학교에서 찍은 사진</h2>
           <div className={data.photos.length === 1 ? 'rp-photos rp-photos-1' : 'rp-photos'}>
             {data.photos.map((p) => (
-              <img key={p.id} src={convertFileSrc(p.absPath)} alt="" />
+              <img key={p.id} src={mediaUrl(p.id)} alt="" />
             ))}
           </div>
         </section>

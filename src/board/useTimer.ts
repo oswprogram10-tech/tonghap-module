@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { beep } from './sound';
+import { dueCue, markPassed, type CueId } from './cues';
+import { playCue } from './sound';
 
 export interface TimerState {
   /** 설정한 전체 시간(초). */
@@ -23,6 +24,8 @@ export function useTimer(initialSeconds = 180): TimerState {
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
   const endAt = useRef(0);
+  /** 이번 회차에서 이미 낸 안내(일시정지·다시 시작해도 같은 안내가 두 번 나오지 않게). */
+  const played = useRef<Set<CueId>>(new Set());
 
   useEffect(() => {
     if (!running) return;
@@ -33,13 +36,17 @@ export function useTimer(initialSeconds = 180): TimerState {
         setRemaining(0);
         setRunning(false);
         setFinished(true);
-        beep(3);
+        played.current = new Set();
+        void playCue('timer-end');
       } else {
         setRemaining(left);
+        const due = dueCue(left, total, played.current);
+        played.current = due.played;
+        if (due.cue) void playCue(due.cue);
       }
     }, 200);
     return () => window.clearInterval(id);
-  }, [running]);
+  }, [running, total]);
 
   const setTotal = useCallback((seconds: number) => {
     const s = Math.max(1, Math.min(seconds, 99 * 60 + 59));
@@ -47,14 +54,16 @@ export function useTimer(initialSeconds = 180): TimerState {
     setRemaining(s);
     setRunning(false);
     setFinished(false);
+    played.current = new Set();
   }, []);
 
   const start = useCallback(() => {
     if (remaining <= 0) return;
     endAt.current = Date.now() + remaining * 1000;
+    played.current = markPassed(remaining, total, played.current);
     setFinished(false);
     setRunning(true);
-  }, [remaining]);
+  }, [remaining, total]);
 
   const pause = useCallback(() => {
     setRemaining(Math.max(0, (endAt.current - Date.now()) / 1000));
@@ -65,11 +74,13 @@ export function useTimer(initialSeconds = 180): TimerState {
     setRunning(false);
     setFinished(false);
     setRemaining(total);
+    played.current = new Set();
   }, [total]);
 
   const dismiss = useCallback(() => {
     setFinished(false);
     setRemaining(total);
+    played.current = new Set();
   }, [total]);
 
   return { total, remaining, running, finished, setTotal, start, pause, reset, dismiss };

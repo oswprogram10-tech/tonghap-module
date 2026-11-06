@@ -1,4 +1,4 @@
-//! 첨부 파일(사진, 음성 메모). 파일은 `media/YYYY/MM/<uuid>.<ext>`에 둔다.
+//! 첨부 파일(사진, 음성 메모). 파일은 `media/YYYY/MM/<uuid>.<ext>`에 두고 내용은 암호화한다(설계 21).
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -8,10 +8,11 @@ use serde::Serialize;
 use tauri::ipc::{InvokeBody, Request};
 use tauri::State;
 
+use super::media::{self, MediaKey, MediaKeyHolder};
 use super::{lock, new_id, now_iso, DbExt, DbResult, MediaDir};
 
 pub const MAX_PHOTO_BYTES: u64 = 50 * 1024 * 1024;
-pub const MAX_AUDIO_BYTES: usize = 100 * 1024 * 1024;
+pub const MAX_AUDIO_BYTES: usize = media::MAX_FILE_BYTES as usize;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -130,7 +131,7 @@ fn insert(conn: &Connection, media: &Path, observation_id: &str, kind: &str, rel
     get(conn, media, &id)
 }
 
-pub fn add_file(conn: &Connection, media: &Path, observation_id: &str, path: &str) -> DbResult<Attachment> {
+pub fn add_file(conn: &Connection, media: &Path, key: &MediaKey, observation_id: &str, path: &str) -> DbResult<Attachment> {
     ensure_observation(conn, observation_id)?;
     let src = Path::new(path);
     let ext = src.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
@@ -143,13 +144,14 @@ pub fn add_file(conn: &Connection, media: &Path, observation_id: &str, path: &st
         return Err("사진 파일이 너무 큽니다(50MB 이하만 가능)".to_string());
     }
     let (rel, abs) = new_target(media, &ext)?;
-    std::fs::copy(src, &abs).map_err(|e| format!("파일을 복사하지 못했습니다: {e}"))?;
-    insert(conn, media, observation_id, "photo", &rel, mime, meta.len()).inspect_err(|_| {
+    let data = std::fs::read(src).map_err(|e| format!("파일을 읽을 수 없습니다: {e}"))?;
+    media::write_encrypted(key, &abs, &rel, &data).map_err(|e| format!("파일을 복사하지 못했습니다: {e}"))?;
+    insert(conn, media, observation_id, "photo", &rel, mime, data.len() as u64).inspect_err(|_| {
         let _ = std::fs::remove_file(&abs);
     })
 }
 
-pub fn add_bytes(conn: &Connection, media: &Path, observation_id: &str, kind: &str, mime: &str, data: &[u8]) -> DbResult<Attachment> {
+pub fn add_bytes(conn: &Connection, media: &Path, key: &MediaKey, observation_id: &str, kind: &str, mime: &str, data: &[u8]) -> DbResult<Attachment> {
     ensure_observation(conn, observation_id)?;
     if kind != "audio" {
         return Err("바이트 첨부는 음성(audio)만 지원합니다".to_string());
@@ -159,10 +161,10 @@ pub fn add_bytes(conn: &Connection, media: &Path, observation_id: &str, kind: &s
         return Err("녹음된 내용이 없습니다".to_string());
     }
     if data.len() > MAX_AUDIO_BYTES {
-        return Err("녹음 파일이 너무 큽니다(100MB 이하만 가능)".to_string());
+        return Err("녹음 파일이 너무 큽니다(64MB 이하만 가능)".to_string());
     }
     let (rel, abs) = new_target(media, ext)?;
-    std::fs::write(&abs, data).map_err(|e| format!("녹음을 저장하지 못했습니다: {e}"))?;
+    media::write_encrypted(key, &abs, &rel, data).map_err(|e| format!("녹음을 저장하지 못했습니다: {e}"))?;
     insert(conn, media, observation_id, "audio", &rel, mime, data.len() as u64).inspect_err(|_| {
         let _ = std::fs::remove_file(&abs);
     })
@@ -216,8 +218,14 @@ pub fn attachment_set_transcript(db: State<Mutex<Connection>>, media: State<Medi
 }
 
 #[tauri::command]
-pub fn attachment_add_file(db: State<Mutex<Connection>>, media: State<MediaDir>, observation_id: String, path: String) -> DbResult<Attachment> {
-    add_file(&*lock(&db)?, &media.0, &observation_id, &path)
+pub fn attachment_add_file(
+    db: State<Mutex<Connection>>,
+    media: State<MediaDir>,
+    key: State<MediaKeyHolder>,
+    observation_id: String,
+    path: String,
+) -> DbResult<Attachment> {
+    add_file(&*lock(&db)?, &media.0, &key.require()?, &observation_id, &path)
 }
 
 fn header(request: &Request<'_>, name: &str) -> DbResult<String> {
@@ -231,14 +239,14 @@ fn header(request: &Request<'_>, name: &str) -> DbResult<String> {
 
 /// 큰 녹음을 JSON 배열로 보내지 않도록 원시 바이트 본문으로 받는다.
 #[tauri::command]
-pub fn attachment_add_bytes(request: Request<'_>, db: State<Mutex<Connection>>, media: State<MediaDir>) -> DbResult<Attachment> {
+pub fn attachment_add_bytes(request: Request<'_>, db: State<Mutex<Connection>>, media: State<MediaDir>, key: State<MediaKeyHolder>) -> DbResult<Attachment> {
     let InvokeBody::Raw(data) = request.body() else {
         return Err("원시 바이트 본문이 필요합니다".to_string());
     };
     let observation_id = header(&request, "x-observation-id")?;
     let kind = header(&request, "x-kind")?;
     let mime = header(&request, "x-mime")?;
-    add_bytes(&*lock(&db)?, &media.0, &observation_id, &kind, &mime, data)
+    add_bytes(&*lock(&db)?, &media.0, &key.require()?, &observation_id, &kind, &mime, data)
 }
 
 #[tauri::command]
@@ -270,23 +278,23 @@ mod tests {
     fn add_bytes_and_file_and_delete() {
         let (conn, _class, _students, obs) = seed();
         let media = tmp("media");
-        let a = add_bytes(&conn, &media, &obs, "audio", "audio/webm;codecs=opus", b"abc").unwrap();
+        let a = add_bytes(&conn, &media, &crate::db::media::test_key(), &obs, "audio", "audio/webm;codecs=opus", b"abc").unwrap();
         assert_eq!((a.kind.as_str(), a.bytes), ("audio", 3));
         assert!(Path::new(&a.abs_path).exists());
         assert!(a.rel_path.ends_with(".webm") && a.rel_path.matches('/').count() == 2);
-        assert!(add_bytes(&conn, &media, &obs, "audio", "audio/webm", b"").is_err());
-        assert!(add_bytes(&conn, &media, &obs, "photo", "audio/webm", b"x").is_err());
+        assert!(add_bytes(&conn, &media, &crate::db::media::test_key(), &obs, "audio", "audio/webm", b"").is_err());
+        assert!(add_bytes(&conn, &media, &crate::db::media::test_key(), &obs, "photo", "audio/webm", b"x").is_err());
 
         let src_dir = tmp("src");
         let photo = src_dir.join("A.JPG");
         std::fs::write(&photo, b"img").unwrap();
-        let p = add_file(&conn, &media, &obs, photo.to_str().unwrap()).unwrap();
+        let p = add_file(&conn, &media, &crate::db::media::test_key(), &obs, photo.to_str().unwrap()).unwrap();
         assert_eq!(p.mime, "image/jpeg");
         assert!(photo.exists() && Path::new(&p.abs_path).exists());
         let txt = src_dir.join("a.txt");
         std::fs::write(&txt, b"x").unwrap();
-        assert!(add_file(&conn, &media, &obs, txt.to_str().unwrap()).is_err());
-        assert!(add_file(&conn, &media, "nope", photo.to_str().unwrap()).is_err());
+        assert!(add_file(&conn, &media, &crate::db::media::test_key(), &obs, txt.to_str().unwrap()).is_err());
+        assert!(add_file(&conn, &media, &crate::db::media::test_key(), "nope", photo.to_str().unwrap()).is_err());
 
         assert_eq!(list_for(&conn, &media, &obs).unwrap().len(), 2);
         delete(&conn, &media, &a.id).unwrap();
@@ -298,7 +306,7 @@ mod tests {
     fn set_transcript_marks_edited_and_empty_clears() {
         let (conn, _class, _students, obs) = seed();
         let media = tmp("media-tr");
-        let a = add_bytes(&conn, &media, &obs, "audio", "audio/webm", b"abc").unwrap();
+        let a = add_bytes(&conn, &media, &crate::db::media::test_key(), &obs, "audio", "audio/webm", b"abc").unwrap();
         assert_eq!((a.transcript_status.as_str(), a.transcript_edited), ("none", false));
 
         let b = set_transcript(&conn, &media, &a.id, "  고친 글 \n둘째 줄 ").unwrap();
@@ -313,7 +321,7 @@ mod tests {
 
         let src = tmp("src-tr").join("a.png");
         std::fs::write(&src, b"img").unwrap();
-        let p = add_file(&conn, &media, &obs, src.to_str().unwrap()).unwrap();
+        let p = add_file(&conn, &media, &crate::db::media::test_key(), &obs, src.to_str().unwrap()).unwrap();
         assert!(set_transcript(&conn, &media, &p.id, "x").is_err());
         assert!(set_transcript(&conn, &media, "nope", "x").is_err());
     }

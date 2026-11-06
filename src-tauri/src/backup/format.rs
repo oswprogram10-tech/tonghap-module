@@ -12,17 +12,23 @@ use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
 use super::*;
+use crate::db::media::{self, MediaKey};
 use crate::db::{attachments, lock, now_iso, DbExt, DbResult};
 
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 
 pub fn sha256_file(path: &Path, on_bytes: &mut dyn FnMut(u64)) -> DbResult<(u64, String)> {
-    let mut f = File::open(path).map_err(|e| format!("파일을 읽을 수 없습니다({}): {e}", path.display()))?;
+    let f = File::open(path).map_err(|e| format!("파일을 읽을 수 없습니다({}): {e}", path.display()))?;
+    sha256_read(f, &path.display().to_string(), on_bytes)
+}
+
+/// 읽을 수 있는 것의 (바이트 수, SHA-256). `what`은 오류 문구에 쓰는 이름.
+pub fn sha256_read(mut f: impl Read, what: &str, on_bytes: &mut dyn FnMut(u64)) -> DbResult<(u64, String)> {
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 256 * 1024];
     let mut total = 0u64;
     loop {
-        let n = f.read(&mut buf).map_err(|e| format!("파일을 읽을 수 없습니다({}): {e}", path.display()))?;
+        let n = f.read(&mut buf).map_err(|e| format!("파일을 읽을 수 없습니다({what}): {e}"))?;
         if n == 0 {
             break;
         }
@@ -63,7 +69,19 @@ fn part_path(out: &Path) -> PathBuf {
 struct Item {
     tar_path: String,
     abs: PathBuf,
+    /// 첨부 파일이면 `media/` 아래 상대 경로(복호화의 AAD). 보관함 안의 첨부는 평문으로 넣는다.
+    rel: Option<String>,
     bytes: u64,
+}
+
+impl Item {
+    /// 평문 내용을 읽는 통로(암호문이면 풀어서).
+    fn open(&self, key: Option<&MediaKey>) -> DbResult<media::PlainSource> {
+        match &self.rel {
+            Some(rel) => media::open_plain(key, &self.abs, rel),
+            None => File::open(&self.abs).map(media::PlainSource::File).map_err(|e| format!("파일을 읽을 수 없습니다({}): {e}", self.abs.display())),
+        }
+    }
 }
 
 /// `work_factor`는 테스트에서만 낮춘다(실제 앱은 `None`, age 기본값).
@@ -121,28 +139,31 @@ fn create_inner(
     cb(progress("snapshot", 1, 1));
 
     // 2) 첨부 파일 확인과 해시
-    let media = data_dir.join("media");
-    let mut items = vec![Item { tar_path: DB_FILE.to_string(), abs: snap.clone(), bytes: 0 }];
+    let media_dir = data_dir.join("media");
+    // 사진·음성은 디스크에 암호문으로 있다. 보관함에는 평문으로 넣으므로(형식 유지) 키가 필요하다.
+    let key = media::load_key(data_dir);
+    let mut items = vec![Item { tar_path: DB_FILE.to_string(), abs: snap.clone(), rel: None, bytes: 0 }];
     let mut missing = Vec::new();
     let mut seen = HashSet::new();
     for rel in rels {
         if !seen.insert(rel.clone()) {
             continue;
         }
-        let abs = attachments::abs_path(&media, &rel);
+        let abs = attachments::abs_path(&media_dir, &rel);
         if safe_rel(&rel) && abs.is_file() {
-            items.push(Item { tar_path: format!("media/{rel}"), abs, bytes: 0 });
+            items.push(Item { tar_path: format!("media/{rel}"), abs, rel: Some(rel.clone()), bytes: 0 });
         } else {
             missing.push(rel);
         }
     }
-    let hash_total: u64 = items.iter().map(|i| std::fs::metadata(&i.abs).map(|m| m.len()).unwrap_or(0)).sum();
+    let hash_total: u64 = items.iter().map(|i| if i.rel.is_some() { media::plain_size(&i.abs) } else { std::fs::metadata(&i.abs).map(|m| m.len()).unwrap_or(0) }).sum();
     let mut hashed = 0u64;
     let mut files = Vec::new();
     for item in &mut items {
-        let (bytes, sha) = sha256_file(&item.abs, &mut |n| {
+        let src = item.open(key.as_ref())?;
+        let (bytes, sha) = sha256_read(src, &item.tar_path, &mut |n| {
             hashed += n;
-            cb(progress("hashing", hashed, hash_total));
+            cb(progress("hashing", hashed.min(hash_total), hash_total));
         })?;
         item.bytes = bytes;
         files.push(FileEntry { path: item.tar_path.clone(), bytes, sha256: sha });
@@ -176,8 +197,8 @@ fn create_inner(
     let mut done = 0u64;
     cb(progress("writing", 0, write_total));
     for item in &items {
-        let f = File::open(&item.abs).map_err(|e| format!("파일을 읽을 수 없습니다({}): {e}", item.abs.display()))?;
-        let reader = ProgressRead { inner: f, done: &mut done, total: write_total, last: 0, cb };
+        let src = item.open(key.as_ref())?;
+        let reader = ProgressRead { inner: src, done: &mut done, total: write_total, last: 0, cb };
         append(&mut tar, &item.tar_path, item.bytes, reader).map_err(io)?;
     }
     tar.finish().map_err(io)?;

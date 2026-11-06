@@ -9,6 +9,8 @@ pub mod crypt;
 pub mod evaluation;
 pub mod habits;
 pub mod key;
+pub mod media;
+pub mod media_serve;
 pub mod migrations;
 pub mod observations;
 pub mod plays;

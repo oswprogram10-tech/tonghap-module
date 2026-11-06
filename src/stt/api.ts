@@ -38,14 +38,14 @@ export const sttApi = {
 };
 
 /** 첨부를 WAV로 바꿔 자막 대기열에 넣는다. 모델이 없으면 MODEL_MISSING 오류. */
-export async function requestTranscript(a: Pick<Attachment, 'id' | 'absPath'>): Promise<void> {
+export async function requestTranscript(a: Pick<Attachment, 'id'>): Promise<void> {
   const st = await sttApi.status();
   if (!st.modelReady || !st.engineReady) throw new Error(MODEL_MISSING);
-  await sttApi.transcribe(a.id, await attachmentToWav(a.absPath));
+  await sttApi.transcribe(a.id, await attachmentToWav(a.id));
 }
 
 /** 저장 직후 자동 받아쓰기: 자동이 켜져 있고 모델이 준비돼 있을 때만, 한 건씩 차례로 요청한다. */
-export async function autoTranscribe(list: Pick<Attachment, 'id' | 'absPath'>[]): Promise<void> {
+export async function autoTranscribe(list: Pick<Attachment, 'id'>[]): Promise<void> {
   if (list.length === 0) return;
   try {
     const st = await sttApi.status();
@@ -56,7 +56,7 @@ export async function autoTranscribe(list: Pick<Attachment, 'id' | 'absPath'>[])
   }
   for (const a of list) {
     try {
-      await sttApi.transcribe(a.id, await attachmentToWav(a.absPath));
+      await sttApi.transcribe(a.id, await attachmentToWav(a.id));
     } catch (e) {
       console.warn('자동 자막 요청 실패', e);
     }

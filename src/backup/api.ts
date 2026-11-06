@@ -8,7 +8,7 @@ export interface BackupCounts {
   attachments: number;
 }
 
-export type BackupStage = 'snapshot' | 'hashing' | 'writing' | 'reading' | 'verifying' | 'swapping';
+export type BackupStage = 'snapshot' | 'hashing' | 'writing' | 'reading' | 'verifying' | 'encrypting' | 'swapping';
 
 export interface BackupProgress {
   stage: BackupStage;
@@ -61,6 +61,20 @@ export interface DbStateInfo {
 
 export const dbStateApi = {
   get: () => invoke<DbStateInfo>('db_state'),
+};
+
+/** 사진·음성 암호화 상태. waiting: 시작 전 또는 전환하지 않음 / working: 전환 중 / done: 이번 실행의 전환이 끝남 */
+export interface MediaProtection {
+  state: 'waiting' | 'working' | 'done';
+  done: number;
+  total: number;
+  failed: number;
+  encrypted: number;
+  plain: number;
+}
+
+export const mediaProtectionApi = {
+  get: () => invoke<MediaProtection>('media_protection'),
 };
 
 export const BACKUP_REMINDER_KEY = 'backupReminderDismissedOn';

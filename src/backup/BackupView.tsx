@@ -12,6 +12,7 @@ const STAGE_LABEL: Record<BackupProgress['stage'], string> = {
   writing: '백업 파일 쓰는 중',
   reading: '백업 파일 읽는 중',
   verifying: '내용 검증하는 중',
+  encrypting: '사진·음성 보호하는 중',
   swapping: '데이터 바꾸는 중',
 };
 

@@ -672,7 +672,7 @@ pub mod tests {
     fn purge_removes_attachment_rows_and_files() {
         let (conn, _cid, _ids, oid) = seed();
         let media = std::env::temp_dir().join(format!("tonghap-test-purge-{}", new_id()));
-        let a = attachments::add_bytes(&conn, &media, &oid, "audio", "audio/webm", b"zzz").unwrap();
+        let a = attachments::add_bytes(&conn, &media, &crate::db::media::test_key(), &oid, "audio", "audio/webm", b"zzz").unwrap();
         assert!(Path::new(&a.abs_path).exists());
         purge(&conn, &media, &oid).unwrap();
         assert!(!Path::new(&a.abs_path).exists());
@@ -706,7 +706,7 @@ pub mod tests {
         let (mut conn, cid, ids, seed_id) = seed();
         let o = add_obs(&mut conn, &cid, &ids[2], 6, "블록을 쌓음", &["탐구"]);
         let media = std::env::temp_dir().join(format!("tonghap-test-search-{}", new_id()));
-        let a = attachments::add_bytes(&conn, &media, &o.id, "audio", "audio/webm", b"zzz").unwrap();
+        let a = attachments::add_bytes(&conn, &media, &crate::db::media::test_key(), &o.id, "audio", "audio/webm", b"zzz").unwrap();
         attachments::set_transcript(&conn, &media, &a.id, "소방차가 빨리 달려요").unwrap();
         // 메모(두 글자 낱말도 조사 앞에서 찾는다)
         assert_eq!(found(&conn, &q(&cid, "블록")), vec![o.id.clone()]);
@@ -781,8 +781,8 @@ pub mod tests {
         assert!(list(&conn, &media(), &range("내일", "2027-03-08")).is_err());
 
         let media = std::env::temp_dir().join(format!("tonghap-test-search-att-{}", new_id()));
-        attachments::add_bytes(&conn, &media, &d6.id, "audio", "audio/webm", b"a").unwrap();
-        attachments::add_bytes(&conn, &media, &d7.id, "audio", "audio/webm", b"a").unwrap();
+        attachments::add_bytes(&conn, &media, &crate::db::media::test_key(), &d6.id, "audio", "audio/webm", b"a").unwrap();
+        attachments::add_bytes(&conn, &media, &crate::db::media::test_key(), &d7.id, "audio", "audio/webm", b"a").unwrap();
         // 사진은 파일 복사 경로가 필요하므로 행을 직접 넣는다.
         conn.execute(
             "INSERT INTO attachments (id, observation_id, kind, rel_path, mime, bytes, created_at) VALUES ('p1', ?1, 'photo', 'x.jpg', 'image/jpeg', 1, 'now')",

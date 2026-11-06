@@ -421,3 +421,125 @@ fn builtin_makingbook_cards_all_have_a_template() {
     }
     assert!(builtin().iter().filter(|a| a.kind != "makingbook").all(|a| a.makingbook.is_none()));
 }
+
+// ───────── 뜻 점수(설계 22) ─────────
+
+fn axis(i: usize) -> Vec<f32> {
+    let mut v = vec![0.0; embed::DIM];
+    v[i] = 1.0;
+    v
+}
+
+/// 가짜 임베딩: 질문은 축 1, 「insect」 카드는 질문에 가깝고 나머지 카드는 서로 직각.
+fn fake_embed(texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
+    Ok(texts
+        .iter()
+        .map(|t| {
+            if t.starts_with("query: ") {
+                axis(1)
+            } else if t.contains("insect") {
+                let mut v = axis(1);
+                v[9] = 0.3;
+                v
+            } else {
+                axis(10 + t.chars().count() % 20)
+            }
+        })
+        .collect())
+}
+
+fn ask_with(conn: &Connection, unit: &UnitDetail, cards: &[Activity], questions: &str, embed: crate::embed::EmbedFn<'_>) -> Vec<Recommendation> {
+    recommend_with_embedder(conn, cards, &RecommendInput { unit_id: unit.id.clone(), after_session_id: None, questions: Some(questions.into()) }, embed).unwrap()
+}
+
+#[test]
+fn meaning_score_adds_four_three_two_by_rank_with_a_reason() {
+    let mut conn = test_conn();
+    let unit = new_unit(&mut conn, Some(TOPIC));
+    let cards = vec![card("insect", "슬", "general", &["하나", "둘", "셋"]), card("plain-a", "슬", "general", &["하나", "둘", "셋"]), card("plain-b", "슬", "general", &["하나", "둘", "셋"])];
+    let question = "개미는 왜 줄 서요?";
+    let base = ask(&conn, &unit, &cards, question);
+    let with = ask_with(&conn, &unit, &cards, question, &fake_embed);
+    let gain = |id: &str| by_id(&with, id).score - by_id(&base, id).score;
+    assert_eq!((gain("insect"), gain("plain-a"), gain("plain-b")), (4, 3, 2));
+    assert!(by_id(&with, "insect").reasons.contains(&"학생 질문 '개미는 왜 줄 서요?'과 뜻이 가까워요".to_string()), "{:?}", by_id(&with, "insect").reasons);
+    assert!(by_id(&base, "insect").reasons.iter().all(|r| !r.contains("뜻이 가까워요")));
+    // 기존 점수(낱말·성취기준 등)는 그대로 두고 더하기만 한다.
+    for r in &base {
+        let after = by_id(&with, &r.activity.id);
+        assert!(r.reasons.iter().all(|x| after.reasons.contains(x)), "{:?}", after.reasons);
+    }
+    // 뜻이 가까운 카드가 앞으로 온다.
+    assert_eq!(with[0].activity.id, "insect");
+    // 같은 입력이면 같은 결과.
+    assert_eq!(ask_with(&conn, &unit, &cards, question, &fake_embed), with);
+}
+
+#[test]
+fn without_a_model_or_on_failure_the_result_is_byte_identical_to_the_rules() {
+    let mut conn = test_conn();
+    let unit = new_unit(&mut conn, Some(TOPIC));
+    let cards = vec![card("insect", "슬", "general", &["곤충", "개미", "관찰"]), card("plain-a", "바", "safety", &["하나", "둘", "셋"]), card("plain-b", "즐", "makingbook", &["하나", "둘", "셋"])];
+    for q in ["개미가 곤충이래요", "", "   \n  ", "관찰하고 싶어요\n개미는 왜 줄 서요?"] {
+        let rules = serde_json::to_string(&ask(&conn, &unit, &cards, q)).unwrap();
+        let failed = ask_with(&conn, &unit, &cards, q, &|_: &[String]| Err("모델 없음".to_string()));
+        assert_eq!(serde_json::to_string(&failed).unwrap(), rules, "임베딩이 실패하면 규칙 결과와 같아야 함: {q:?}");
+        let wrong_dim = ask_with(&conn, &unit, &cards, q, &|t: &[String]| Ok(vec![vec![1.0, 0.0]; t.len()]));
+        assert_eq!(serde_json::to_string(&wrong_dim).unwrap(), rules);
+    }
+    let n: i64 = conn.query_row("SELECT count(*) FROM embeddings", [], |r| r.get(0)).unwrap();
+    assert_eq!(n, 0, "실패한 계산은 저장하지 않는다");
+    // 질문이 없으면 임베딩을 부르지도 않는다.
+    let called = std::cell::Cell::new(false);
+    let none = ask_with(&conn, &unit, &cards, "", &|t: &[String]| {
+        called.set(true);
+        fake_embed(t)
+    });
+    assert!(!called.get());
+    assert_eq!(serde_json::to_string(&none).unwrap(), serde_json::to_string(&ask(&conn, &unit, &cards, "")).unwrap());
+}
+
+#[test]
+fn several_questions_use_the_closest_one_for_the_reason() {
+    let mut conn = test_conn();
+    let unit = new_unit(&mut conn, Some(TOPIC));
+    let cards = vec![card("insect", "슬", "general", &["하나", "둘", "셋"])];
+    let embed = |texts: &[String]| -> Result<Vec<Vec<f32>>, String> {
+        Ok(texts
+            .iter()
+            .map(|t| match t {
+                t if t.starts_with("query: ") && t.contains("개미") => axis(1),
+                t if t.starts_with("query: ") => axis(5),
+                _ => axis(1),
+            })
+            .collect())
+    };
+    let with = ask_with(&conn, &unit, &cards, "태극기는 왜 빨개요?\n개미는 왜 줄 서요?\n\n비 오면 뭐 해요?", &embed);
+    assert!(with[0].reasons.contains(&"학생 질문 '개미는 왜 줄 서요?'과 뜻이 가까워요".to_string()), "{:?}", with[0].reasons);
+}
+
+#[test]
+fn deleting_a_custom_card_removes_its_vector_and_edits_recompute_it() {
+    let mut conn = test_conn();
+    let unit = new_unit(&mut conn, Some(TOPIC));
+    let saved = save_custom(&conn, &card("", "슬", "general", &["개미", "곤충", "관찰"])).unwrap();
+    let calls = std::cell::RefCell::new(Vec::<usize>::new());
+    let counting = |t: &[String]| {
+        calls.borrow_mut().push(t.len());
+        fake_embed(t)
+    };
+    let cards: Vec<Activity> = vec![];
+    ask_with(&conn, &unit, &cards, "질문", &counting);
+    ask_with(&conn, &unit, &cards, "질문", &counting);
+    let n = |c: &Connection| c.query_row("SELECT count(*) FROM embeddings WHERE ref_id = ?1", [&saved.id], |r| r.get::<_, i64>(0)).unwrap();
+    assert_eq!(n(&conn), 1);
+    let first = calls.borrow()[0];
+    assert_eq!(calls.borrow()[1], 1, "두 번째는 질문 하나만 계산 (카드 벡터는 저장돼 있음), 처음에는 {first}개");
+    let mut edit = saved.clone();
+    edit.title = "개미 집 탐험하기".into();
+    save_custom(&conn, &edit).unwrap();
+    ask_with(&conn, &unit, &cards, "질문", &counting);
+    assert_eq!(*calls.borrow().last().unwrap(), 2, "고친 카드는 다시 계산");
+    delete_custom(&conn, &saved.id).unwrap();
+    assert_eq!(n(&conn), 0);
+}

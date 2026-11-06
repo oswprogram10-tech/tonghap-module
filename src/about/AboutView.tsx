@@ -3,7 +3,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import notices from '../../src-tauri/resources/THIRD_PARTY_NOTICES.md?raw';
 import { BUILTIN_PLAYS } from '../board/api';
-import { backupApi, dbStateApi, type BackupCounts, type BackupStatus, type DbStateInfo } from '../backup/api';
+import { backupApi, dbStateApi, mediaProtectionApi, type BackupCounts, type BackupStatus, type DbStateInfo, type MediaProtection } from '../backup/api';
 import { curriculum } from '../curriculum';
 import { formatBytes } from '../diag/estimate';
 import { errorText } from '../records/api';
@@ -36,11 +36,37 @@ function when(iso: string) {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' });
 }
 
+/** 「기록 보호」 안의 사진·음성 한 줄. */
+function MediaProtectionLine({ media, locked }: { media: MediaProtection | null; locked: boolean }) {
+  if (locked) return null;
+  if (media === null) return <p className="diag-note">사진·음성 상태를 확인하는 중…</p>;
+  if (media.state === 'working') {
+    return (
+      <p className="diag-note" role="status">
+        사진·음성 암호화 중 ({Math.min(media.done, media.total)}/{media.total})
+      </p>
+    );
+  }
+  if (media.plain > 0) {
+    return (
+      <p className="diag-note" role="status">
+        사진·음성 {media.plain}개는 아직 암호화하지 못했습니다. 원본은 그대로 있으며 앱을 다시 시작하면 다시 시도합니다.
+      </p>
+    );
+  }
+  return (
+    <p className="diag-note" role="status">
+      사진·음성도 암호화되어 있습니다.
+    </p>
+  );
+}
+
 export default function AboutView({ onGoBackup }: { onGoBackup: () => void }) {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [dbState, setDbState] = useState<DbStateInfo | null>(null);
+  const [media, setMedia] = useState<MediaProtection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   const [showFull, setShowFull] = useState(false);
@@ -64,6 +90,32 @@ export default function AboutView({ onGoBackup }: { onGoBackup: () => void }) {
     backupApi.status().then(setStatus, (e) => setError(errorText(e)));
     dbStateApi.get().then(setDbState, (e) => setError(errorText(e)));
   }, [tauri]);
+
+  // 사진·음성 암호화 진행 상황: 전환 중이면 2초마다 다시 확인한다.
+
+  useEffect(() => {
+    if (!tauri) return;
+    let stop = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = () =>
+      mediaProtectionApi.get().then(
+        (m) => {
+          if (stop) return;
+          setMedia(m);
+          if (m.state === 'working') timer = setTimeout(tick, 2000);
+        },
+        () => {
+          // 상태를 못 읽어도 화면의 나머지는 그대로 둔다.
+        },
+      );
+    void tick();
+    return () => {
+      stop = true;
+      if (timer) clearTimeout(timer);
+    };
+    // 처음 한 번 시작해 스스로 이어 간다.
+  }, [tauri]);
+
 
   const standards = curriculum.standards;
   const count = (v: string) => standards.filter((s) => s.verification === v).length;
@@ -170,12 +222,13 @@ export default function AboutView({ onGoBackup }: { onGoBackup: () => void }) {
               기록 데이터베이스를 아직 암호화하지 못했습니다. 지금은 예전처럼 평문으로 저장되어 있습니다. 앱을 다시 시작하면 다시 시도합니다.
             </p>
             {dbState.reason && <p className="diag-hint">이유: {dbState.reason}</p>}
-            <p className="diag-note">사진·음성 파일은 아직 암호화되지 않습니다.</p>
+            <p className="diag-note">사진·음성 파일은 기록 데이터베이스를 암호화한 뒤에 암호화합니다.</p>
           </>
         ) : (
-          <p className="diag-note">
-            기록 데이터베이스가 이 PC의 윈도우 계정에 묶인 키로 암호화되어 있습니다. 사진·음성 파일은 아직 암호화되지 않습니다.
-          </p>
+          <>
+            <p className="diag-note">기록 데이터베이스가 이 PC의 윈도우 계정에 묶인 키로 암호화되어 있습니다.</p>
+            <MediaProtectionLine media={media} locked={dbState.state === 'locked'} />
+          </>
         )}
       </section>
 

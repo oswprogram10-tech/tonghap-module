@@ -601,7 +601,7 @@ mod tests {
     fn photo(cx: &Ctx, o: &str) -> String {
         let p = tmp("src").join("a.png");
         std::fs::write(&p, b"img").unwrap();
-        attachments::add_file(&cx.conn, &cx.media, o, p.to_str().unwrap()).unwrap().id
+        attachments::add_file(&cx.conn, &cx.media, &crate::db::media::test_key(), o, p.to_str().unwrap()).unwrap().id
     }
 
     const FROM: &str = "2027-03-01";
@@ -652,7 +652,7 @@ mod tests {
     fn no_other_student_name_appears_anywhere_in_the_serialized_response() {
         let mut cx = seed();
         let a = obs(&mut cx, &[0, 1], "2027-03-05", "박서준이랑 같이 블록을 쌓았다. 서준이가 먼저 도왔고 지우도 구경했다. 이지우는 웃었다. 김하늘은 기뻐했다.", &["[2바01-01]"]);
-        let au = attachments::add_bytes(&cx.conn, &cx.media, &a.id, "audio", "audio/webm", b"x").unwrap();
+        let au = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &a.id, "audio", "audio/webm", b"x").unwrap();
         attachments::set_transcript(&cx.conn, &cx.media, &au.id, "서준이가 박서준 이름을 불렀어요. 이지우 하늘이").unwrap();
         obs(&mut cx, &[0, 1, 2], "2027-03-06", "셋이 박서준 이지우와 함께", &[]);
         // 단원 차시 제목에도 이름이 있을 수 있다.
@@ -752,7 +752,7 @@ mod tests {
         bad.from = "2027-05-01".into();
         assert!(save(&cx.conn, &cx.media, &bad).is_err());
         // 자막 없는 음성은 인용할 수 없다.
-        let au = attachments::add_bytes(&cx.conn, &cx.media, &a.id, "audio", "audio/webm", b"x").unwrap();
+        let au = attachments::add_bytes(&cx.conn, &cx.media, &crate::db::media::test_key(), &a.id, "audio", "audio/webm", b"x").unwrap();
         let mut q = input(vec![], vec![]);
         q.quote_attachment_ids = vec![au.id.clone()];
         assert!(save(&cx.conn, &cx.media, &q).is_err());

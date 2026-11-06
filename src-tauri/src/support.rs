@@ -79,6 +79,9 @@ pub struct Facts {
     /// 기록 DB 보호 상태: `ok` | `plain` | `locked`
     pub db_state: &'static str,
     pub db_encrypted: bool,
+    /// 사진·음성 파일 중 암호화된 수 / 아직 평문인 수(숫자만)
+    pub media_encrypted: u64,
+    pub media_plain: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -100,6 +103,8 @@ pub struct AboutJson {
     pub models: Vec<ModelInfo>,
     pub db_encrypted: bool,
     pub db_state: &'static str,
+    pub media_encrypted: u64,
+    pub media_plain: u64,
     pub db_schema_version: i64,
     pub latest_schema_version: i64,
     pub counts: Counts,
@@ -158,6 +163,8 @@ pub fn build_about(facts: Facts, conn: &Connection, models_dir: &Path, now: Date
         models: model_infos(models_dir),
         db_encrypted: facts.db_encrypted,
         db_state: facts.db_state,
+        media_encrypted: facts.media_encrypted,
+        media_plain: facts.media_plain,
         db_schema_version: read_schema_version(conn)?,
         latest_schema_version: crate::db::migrations::latest_version(),
         counts: read_counts(conn)?,
@@ -346,6 +353,7 @@ fn gather_facts(app: &AppHandle, curriculum_data_version: String) -> Facts {
         sys.refresh_memory();
         sys
     });
+    let (media_encrypted, media_plain) = app.try_state::<crate::db::MediaDir>().map(|m| crate::db::media::count_state(&m.0)).unwrap_or((0, 0));
     let v = vulkan::probe();
     let has = |dir: &str, name: &str| crate::engine::engine(app, dir, name).is_ok();
     Facts {
@@ -367,6 +375,8 @@ fn gather_facts(app: &AppHandle, curriculum_data_version: String) -> Facts {
         },
         db_state: db_state.kind(),
         db_encrypted: db_state.encrypted(),
+        media_encrypted,
+        media_plain,
     }
 }
 
@@ -448,6 +458,8 @@ mod tests {
             engines: EnginesInfo { llama_server: true, llama_bench: false, whisper_cli: true },
             db_state: "ok",
             db_encrypted: true,
+            media_encrypted: 12,
+            media_plain: 3,
         }
     }
 
@@ -592,6 +604,8 @@ mod tests {
             "models",
             "dbEncrypted",
             "dbState",
+            "mediaEncrypted",
+            "mediaPlain",
             "dbSchemaVersion",
             "latestSchemaVersion",
             "counts",
@@ -604,6 +618,7 @@ mod tests {
         assert_eq!(v["engines"]["llamaBench"], false);
         assert_eq!(v["dbEncrypted"], true);
         assert_eq!(v["dbState"], "ok");
+        assert_eq!((v["mediaEncrypted"].as_u64(), v["mediaPlain"].as_u64()), (Some(12), Some(3)), "사진·음성은 개수(숫자)만");
         assert_eq!(v["dbSchemaVersion"], v["latestSchemaVersion"]);
         assert_eq!(v["counts"], serde_json::json!({"classes":1,"students":2,"observations":0,"attachments":0,"units":0,"habits":0}));
         let models = v["models"].as_array().unwrap();

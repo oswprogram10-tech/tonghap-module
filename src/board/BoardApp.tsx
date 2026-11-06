@@ -10,7 +10,7 @@ import PlayTab from './PlayTab';
 import TeamTab from './TeamTab';
 import TimerTab from './TimerTab';
 import { formatClock } from './random';
-import { setSoundOn, soundOn } from './sound';
+import { SOUND_MODES, getSoundMode, setSoundMode, type SoundMode } from './sound';
 import { useTimer } from './useTimer';
 import './board.css';
 
@@ -37,7 +37,7 @@ export default function BoardApp() {
   const [absent, setAbsent] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [sound, setSound] = useState(soundOn());
+  const [sound, setSound] = useState<SoundMode>(getSoundMode());
   const [fullscreen, setFullscreen] = useState(false);
   const timer = useTimer(180);
 
@@ -101,6 +101,10 @@ export default function BoardApp() {
     timer.setTotal(minutes * 60);
     setTab('timer');
   };
+  const changeSound = (m: SoundMode) => {
+    setSoundMode(m);
+    setSound(m);
+  };
   const timerShown = timer.running || timer.remaining < timer.total;
 
   // 타이머 끝남 알림이 떠 있을 때 화면 깜빡임은 어느 탭에서든 보인다.
@@ -124,15 +128,8 @@ export default function BoardApp() {
           </button>
         )}
         <div className="bd-top-end">
-          <button
-            className="bd-small"
-            aria-pressed={sound}
-            onClick={() => {
-              setSoundOn(!sound);
-              setSound(!sound);
-            }}
-          >
-            소리 {sound ? '켜짐' : '꺼짐'}
+          <button className="bd-small" onClick={() => changeSound(SOUND_MODES[(SOUND_MODES.findIndex((m) => m.id === sound) + 1) % SOUND_MODES.length].id)}>
+            소리: {SOUND_MODES.find((m) => m.id === sound)?.label}
           </button>
           <button className="bd-small" onClick={toggleFullscreen}>
             {fullscreen ? '창으로' : '전체 화면'}
@@ -159,7 +156,7 @@ export default function BoardApp() {
             <TeamTab students={students} absent={absent} onAbsent={changeAbsent} cls={cls} />
           </section>
           <section hidden={tab !== 'timer'}>
-            <TimerTab timer={timer} />
+            <TimerTab timer={timer} sound={sound} onSound={changeSound} />
           </section>
           <section hidden={tab !== 'habit'}>
             <HabitTab cls={cls} students={students} />

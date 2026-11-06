@@ -15,6 +15,7 @@ use serde_json::Value;
 use super::activities;
 use super::evaluation::bundle::subject_tags;
 use super::evaluation::data::curriculum;
+use super::media::{self, MediaKey};
 use super::{lock, DbExt, DbResult};
 
 const PHRASES_JSON: &str = include_str!("../../../data/synthetic/phrases.json");
@@ -189,7 +190,7 @@ fn at(day: NaiveDate, rng: &mut Rng) -> String {
 
 /// 학급 1, 학생 `opts.students`, 관찰·첨부·단원·차시·습관 체크·평어 초안·학부모 리포트를 넣는다.
 /// 첨부 파일은 `media_dir` 아래에 실제로 쓴다.
-pub fn seed_year(conn: &mut Connection, media_dir: &Path, opts: &SeedOpts) -> DbResult<SeedSummary> {
+pub fn seed_year(conn: &mut Connection, media_dir: &Path, key: &MediaKey, opts: &SeedOpts) -> DbResult<SeedSummary> {
     let ph = load_phrases();
     if ph.obs.is_empty() || ph.quotes.is_empty() || ph.habits.is_empty() {
         return Err("합성 문장 자료가 비어 있습니다".to_string());
@@ -360,7 +361,7 @@ pub fn seed_year(conn: &mut Connection, media_dir: &Path, opts: &SeedOpts) -> Db
             let photo = i % 5 < 3;
             let (kind, ext, mime, data): (&str, &str, &str, &[u8]) = if photo { ("photo", "png", "image/png", TINY_PNG) } else { ("audio", "wav", "audio/wav", &wav) };
             let rel = format!("{ym}/{id}.{ext}");
-            std::fs::write(media_dir.join(&rel), data).map_err(|e| format!("첨부 파일을 쓸 수 없습니다: {e}"))?;
+            media::write_encrypted(key, &media_dir.join(&rel), &rel, data).map_err(|e| format!("첨부 파일을 쓸 수 없습니다: {e}"))?;
             let (status, transcript): (&str, Option<String>) = if photo {
                 ("none", None)
             } else if rng.chance(70) {
@@ -449,7 +450,8 @@ pub async fn dev_seed_year(app: tauri::AppHandle) -> DbResult<String> {
         let media = app.state::<super::MediaDir>().0.clone();
         let db = app.state::<Mutex<Connection>>();
         let mut conn = lock(&db)?;
-        let s = seed_year(&mut conn, &media, &SeedOpts::default())?;
+        let key = app.state::<media::MediaKeyHolder>().require()?;
+        let s = seed_year(&mut conn, &media, &key, &SeedOpts::default())?;
         Ok(s.class_id)
     })
     .await
@@ -488,9 +490,9 @@ mod tests {
     fn same_seed_gives_identical_data_and_other_seed_differs() {
         let (d1, d2, d3) = (tempfile_dir("a"), tempfile_dir("b"), tempfile_dir("c"));
         let (mut a, mut b, mut c) = (fresh(), fresh(), fresh());
-        seed_year(&mut a, &d1, &small()).unwrap();
-        seed_year(&mut b, &d2, &small()).unwrap();
-        seed_year(&mut c, &d3, &SeedOpts { seed: 7, ..small() }).unwrap();
+        seed_year(&mut a, &d1, &crate::db::media::test_key(), &small()).unwrap();
+        seed_year(&mut b, &d2, &crate::db::media::test_key(), &small()).unwrap();
+        seed_year(&mut c, &d3, &crate::db::media::test_key(), &SeedOpts { seed: 7, ..small() }).unwrap();
         assert_eq!(dump(&a), dump(&b));
         assert_ne!(dump(&a), dump(&c));
     }
@@ -510,7 +512,7 @@ mod tests {
         let dir = tempfile_dir("counts");
         let mut conn = fresh();
         let o = small();
-        let s = seed_year(&mut conn, &dir, &o).unwrap();
+        let s = seed_year(&mut conn, &dir, &crate::db::media::test_key(), &o).unwrap();
         assert_eq!(count(&conn, "SELECT count(*) FROM classes"), 1);
         assert_eq!(count(&conn, "SELECT count(*) FROM students"), 25);
         assert_eq!(count(&conn, "SELECT count(*) FROM observations"), 120);
@@ -542,7 +544,7 @@ mod tests {
     fn full_year_has_the_designed_volume() {
         let dir = tempfile_dir("full");
         let mut conn = fresh();
-        let s = seed_year(&mut conn, &dir, &SeedOpts::default()).unwrap();
+        let s = seed_year(&mut conn, &dir, &crate::db::media::test_key(), &SeedOpts::default()).unwrap();
         assert_eq!(count(&conn, "SELECT count(*) FROM observations"), 3000);
         assert_eq!(count(&conn, "SELECT count(*) FROM attachments"), 1500);
         assert_eq!(count(&conn, "SELECT count(*) FROM unit_sessions"), 400);

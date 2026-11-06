@@ -11,6 +11,7 @@ use rusqlite::Connection;
 use super::format::{open_stream, read_manifest, sha256_file};
 use super::*;
 use crate::db::key::{self, DbKey, KeyFile};
+use crate::db::media::{self, MediaKey};
 use crate::db::{self, crypt, lock, migrations, DbExt, DbResult};
 
 pub const STAGING: &str = ".restore-staging";
@@ -172,6 +173,23 @@ fn restore_key(data_dir: &Path, staging: &Path) -> DbResult<DbKey> {
     }
 }
 
+/// staging의 평문 사진·음성을 암호문으로 바꾼다. 파일마다 암호화 → 복호화 해시 확인 → 덮어쓰기.
+/// 너무 큰 파일(64MB 초과)은 평문 그대로 둔다(읽을 때는 평문도 열린다). 실패하면 오류.
+pub fn encrypt_staged_media(dir: &Path, key: &MediaKey, ops: &dyn media::FileOps, cb: &mut dyn FnMut(BackupProgress)) -> DbResult<()> {
+    let files = media::list_files(dir);
+    let total = files.len() as u64;
+    cb(progress("encrypting", 0, total));
+    for (i, (rel, abs)) in files.iter().enumerate() {
+        match media::convert_file(key, abs, rel, ops) {
+            media::Outcome::Converted | media::Outcome::Already => {}
+            media::Outcome::Skipped(why) => crate::logging::info("backup", &format!("복원: 사진·음성 한 개를 암호화하지 않았습니다({why})")),
+            media::Outcome::Failed(why) => return Err(format!("사진·음성을 암호화하지 못해 복원하지 않았습니다: {why}")),
+        }
+        cb(progress("encrypting", i as u64 + 1, total));
+    }
+    Ok(())
+}
+
 /// 현재 DB·첨부를 `before-restore-<stamp>`로 옮기고 staging의 것으로 바꾼다. 실패하면 원래대로 되돌린다.
 /// 지금 기록을 열 수 없던 경우(잠김)에는 `unreadable-<stamp>`로 옮기고, staging에 새 키(`db.key`)가 있으면 옛 키 파일도 함께 옮긴다.
 pub fn swap_data(db: &Mutex<Connection>, data_dir: &Path, staging: &Path, stamp: &str) -> DbResult<PathBuf> {
@@ -281,6 +299,8 @@ pub fn restore(db: &Mutex<Connection>, data_dir: &Path, path: &Path, password: &
         // 백업 속 DB는 평문이다. 지금 키로 암호화한 파일로 바꾼 뒤 교체한다.
         let key = restore_key(data_dir, &staging)?;
         crypt::encrypt_file_in_place(&staging.join(DB_FILE), &key)?;
+        // 사진·음성도 같은 키에서 나온 미디어 키로 암호화한다(백업 안은 평문). 하나라도 실패하면 교체하지 않는다.
+        encrypt_staged_media(&staging.join("media"), &MediaKey::from_db_key(&key), &media::RealFileOps, cb)?;
         cb(progress("swapping", 0, 1));
         let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
         swap_data(db, data_dir, &staging, &stamp)?;

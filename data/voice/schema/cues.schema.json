@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "안내 음성 문구",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "cues"],
+  "properties": {
+    "version": { "const": 1 },
+    "cues": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "ttsInput", "when"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 32 },
+          "text": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "ttsInput": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "when": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

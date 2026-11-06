@@ -92,7 +92,7 @@ pub struct BackupResult {
     pub missing: Vec<String>,
 }
 
-/// `stage`: snapshot | hashing | writing | reading | verifying | swapping. 단위는 바이트(snapshot, swapping은 0/1).
+/// `stage`: snapshot | hashing | writing | reading | verifying | encrypting | swapping. 단위는 바이트(snapshot, swapping은 0/1).
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupProgress {
@@ -282,8 +282,13 @@ pub async fn backup_inspect(path: String, password: String) -> DbResult<BackupSu
 pub async fn backup_restore(app: AppHandle, path: String, password: String, on_progress: Channel<BackupProgress>) -> DbResult<BackupSummary> {
     let _busy = BusyGuard::acquire()?;
     let dir = data_dir(&app)?;
+    // 사진·음성 백그라운드 암호화가 돌고 있으면 멈춘다(미디어 폴더를 옮길 때 파일이 열려 있지 않도록).
+    if let Some(p) = app.try_state::<std::sync::Arc<crate::db::media::Progress>>() {
+        p.cancel();
+    }
     crate::logging::info("backup", "백업 복원 시작");
     let handle = app.clone();
+    let dir_for_key = dir.clone();
     let result = blocking(move || {
         let db = app.state::<Mutex<Connection>>();
         let mut throttle = Throttle::new(PROGRESS_MIN_INTERVAL);
@@ -298,6 +303,10 @@ pub async fn backup_restore(app: AppHandle, path: String, password: String, on_p
         // 복원된 DB는 항상 암호화되어 열린다(잠김·평문 경고 상태가 풀린다).
         if let Some(s) = handle.try_state::<DbStatus>() {
             *s.0.lock().unwrap_or_else(|e| e.into_inner()) = DbState::Ok;
+        }
+        // 잠긴 상태에서 복원하면 키가 새로 만들어진다. 사진·음성 키도 다시 읽는다.
+        if let Some(h) = handle.try_state::<crate::db::media::MediaKeyHolder>() {
+            h.set(crate::db::media::load_key(&dir_for_key));
         }
     }
     log_backup_result("백업 복원", &result);

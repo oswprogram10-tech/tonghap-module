@@ -33,6 +33,33 @@ export interface RecommendInput {
   questions?: string;
 }
 
+/** 뜻으로 비슷한 질문 묶음(화면에만 쓰고 저장하지 않는다). */
+export interface QuestionGroup {
+  questions: string[];
+  /** 묶음 중심에 가장 가까운 질문 */
+  representative: string;
+}
+
+export interface EmbedStatus {
+  modelReady: boolean;
+  engineReady: boolean;
+  /** 뜻 임베딩 모델과 엔진이 모두 있음 */
+  ready: boolean;
+}
+
+/** 질문 글을 줄마다 나눈 질문들(빈 줄은 뺀다). 백엔드 `question_lines`와 같은 규칙. */
+export function questionLines(text: string): string[] {
+  return text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+}
+
+export const embedApi = {
+  status: () => invoke<EmbedStatus>('embed_status'),
+  cluster: (questions: string[]) => invoke<QuestionGroup[]>('question_cluster', { input: { questions } }),
+};
+
 export const BUILTIN_ACTIVITIES = (builtin as { activities: Activity[] }).activities;
 
 export const ACTIVITY_KIND_LABEL: Record<ActivityKind, string> = { general: '일반', safety: '안전', makingbook: '메이킹북' };

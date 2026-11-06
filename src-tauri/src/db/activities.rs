@@ -1,19 +1,24 @@
 //! 활동 카드: 기본 카드(`data/activities/activities.json`), 교사 카드, 꼬리 잇기 추천.
 //!
 //! 카드 검증 규칙은 `data/activities/schema/activities.schema.json`과 같다.
-//! 추천은 언어 모델 없이 규칙(학생 질문 낱말, 아직 안 다룬 성취기준, 필수 편성 부족)으로 점수를 매긴다.
+//! 추천은 규칙(학생 질문 낱말, 아직 안 다룬 성취기준, 필수 편성 부족)으로 점수를 매긴다.
+//! 뜻 임베딩 모델이 있으면 질문과 뜻이 가까운 카드에 점수를 더한다(`semantic`, 설계 22). 모델이 없으면 규칙 점수만 쓴다.
 
 use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use super::evaluation::check::{tokens, variants};
 use super::evaluation::data::curriculum;
 use super::units::{self, Session, UnitDetail};
 use super::{classes, lock, new_id, now_iso, DbExt, DbResult};
+use crate::embed::{self, EmbedServer};
+
+mod semantic;
+use semantic::Semantic;
 
 const BUILTIN_JSON: &str = include_str!("../../../data/activities/activities.json");
 const KINDS: [&str; 3] = ["general", "safety", "makingbook"];
@@ -219,6 +224,7 @@ pub fn delete_custom(conn: &Connection, id: &str) -> DbResult<()> {
     if n == 0 {
         return Err("활동 카드를 찾을 수 없습니다".to_string());
     }
+    semantic::forget_card(conn, id)?;
     Ok(())
 }
 
@@ -279,8 +285,15 @@ fn lacking_sessions(minutes: i64, need: i64) -> i64 {
     (rest + SESSION_MINUTES - 1).div_euclid(SESSION_MINUTES)
 }
 
-/// 카드 목록을 받아 계산하는 순수 함수(테스트에서 카드 목록을 바꿔 쓴다).
-pub fn recommend_with(conn: &Connection, builtin_cards: &[Activity], input: &RecommendInput) -> DbResult<Vec<Recommendation>> {
+/// 추천에 필요한 입력: 단원, 질문 글, 후보 카드.
+struct Gathered {
+    unit: UnitDetail,
+    after_session_id: Option<String>,
+    questions: String,
+    cards: Vec<Activity>,
+}
+
+fn gather(conn: &Connection, builtin_cards: &[Activity], input: &RecommendInput) -> DbResult<Gathered> {
     let unit = units::get(conn, &input.unit_id)?;
     let sessions = all_sessions(&unit);
     let after = match input.after_session_id.as_deref().filter(|s| !s.is_empty()) {
@@ -291,6 +304,7 @@ pub fn recommend_with(conn: &Connection, builtin_cards: &[Activity], input: &Rec
         Some(q) => q.to_string(),
         None => after.map(|s| s.student_questions.clone()).unwrap_or_default(),
     };
+    let after_session_id = after.map(|s| s.id.clone());
 
     // 후보: 단원 주제책의 카드(없으면 학급 학년의 모든 주제책), 이미 쓴 카드는 뺀다.
     let mut cards: Vec<Activity> = builtin_cards.to_vec();
@@ -304,6 +318,19 @@ pub fn recommend_with(conn: &Connection, builtin_cards: &[Activity], input: &Rec
     }
     let used: HashSet<&str> = sessions.iter().filter_map(|s| s.activity_id.as_deref()).collect();
     cards.retain(|a| !used.contains(a.id.as_str()));
+    Ok(Gathered { unit, after_session_id, questions, cards })
+}
+
+/// 카드 목록을 받아 계산하는 순수 함수(테스트에서 카드 목록을 바꿔 쓴다). 뜻 점수 없이 규칙만 쓴다.
+pub fn recommend_with(conn: &Connection, builtin_cards: &[Activity], input: &RecommendInput) -> DbResult<Vec<Recommendation>> {
+    recommend_core(conn, builtin_cards, input, None)
+}
+
+fn recommend_core(conn: &Connection, builtin_cards: &[Activity], input: &RecommendInput, sem: Option<&Semantic>) -> DbResult<Vec<Recommendation>> {
+    let Gathered { unit, after_session_id, questions, cards } = gather(conn, builtin_cards, input)?;
+    let sessions = all_sessions(&unit);
+    let after = after_session_id.as_deref().and_then(|id| sessions.iter().copied().find(|s| s.id == id));
+    let meaning = sem.map(|s| s.bonuses(&cards)).unwrap_or_default();
 
     let covered: HashSet<&str> = unit.totals.standards.iter().map(|s| s.code.as_str()).collect();
     // 앞 차시의 교과: 카드로 만든 차시면 그 카드의 교과, 아니면 성취기준의 교과.
@@ -326,6 +353,10 @@ pub fn recommend_with(conn: &Connection, builtin_cards: &[Activity], input: &Rec
             for word in matched_words(&questions, &activity) {
                 score += POINTS_WORD;
                 reasons.push(format!("학생 질문의 '{word}'{} 이어져요", wa_gwa(&word)));
+            }
+            if let Some(m) = meaning.get(activity.id.as_str()) {
+                score += m.points;
+                reasons.push(m.reason.clone());
             }
             for code in activity.standards.iter().filter(|c| !covered.contains(c.as_str())) {
                 score += POINTS_STANDARD;
@@ -354,6 +385,26 @@ pub fn recommend(conn: &Connection, input: &RecommendInput) -> DbResult<Vec<Reco
     recommend_with(conn, builtin(), input)
 }
 
+/// 뜻 임베딩까지 쓰는 추천을 한 번에 계산한다(테스트용: DB를 잡은 채로 임베딩을 부른다).
+/// 임베딩이 하나라도 실패하면 규칙 점수만 쓴 결과와 같다.
+#[cfg(test)]
+pub fn recommend_with_embedder(conn: &Connection, builtin_cards: &[Activity], input: &RecommendInput, embed: crate::embed::EmbedFn<'_>) -> DbResult<Vec<Recommendation>> {
+    let g = gather(conn, builtin_cards, input)?;
+    let Some(plan) = semantic::plan(conn, &g.cards, &g.questions)? else {
+        return recommend_with(conn, builtin_cards, input);
+    };
+    let computed = plan.compute(embed);
+    finish(conn, builtin_cards, input, plan, computed)
+}
+
+fn finish(conn: &Connection, builtin_cards: &[Activity], input: &RecommendInput, plan: semantic::Plan, computed: Option<semantic::Computed>) -> DbResult<Vec<Recommendation>> {
+    let sem = match computed {
+        Some(c) => Some(semantic::store_and_build(conn, plan, c)?),
+        None => None,
+    };
+    recommend_core(conn, builtin_cards, input, sem.as_ref())
+}
+
 // ───────── Tauri 명령 ─────────
 
 #[tauri::command]
@@ -371,9 +422,27 @@ pub fn activity_custom_delete(db: State<Mutex<Connection>>, id: String) -> DbRes
     delete_custom(&*lock(&db)?, &id)
 }
 
+/// 추천 카드. 뜻 임베딩 모델이 있으면 질문과 뜻이 가까운 카드에 점수를 더하고, 없거나 실패하면 규칙 점수만 쓴다(오류 없음).
+/// 서버 호출은 DB 잠금 밖에서 한다.
 #[tauri::command]
-pub fn activity_recommend(db: State<Mutex<Connection>>, input: RecommendInput) -> DbResult<Vec<Recommendation>> {
-    recommend(&*lock(&db)?, &input)
+pub async fn activity_recommend(app: AppHandle, db: State<'_, Mutex<Connection>>, embed_server: State<'_, EmbedServer>, input: RecommendInput) -> DbResult<Vec<Recommendation>> {
+    let Some(engine) = embed::ready(&app) else { return recommend(&*lock(&db)?, &input) };
+    let plan = {
+        let conn = lock(&db)?;
+        let g = gather(&conn, builtin(), &input)?;
+        semantic::plan(&conn, &g.cards, &g.questions)?
+    };
+    let Some(plan) = plan else { return recommend(&*lock(&db)?, &input) };
+    let server = Arc::clone(&embed_server.0);
+    let log = embed::log_path(&app);
+    let (plan, computed) = tauri::async_runtime::spawn_blocking(move || {
+        let embed_fn = |texts: &[String]| embed::embed_texts(&server, &engine, log.clone(), texts);
+        let computed = plan.compute(&embed_fn);
+        (plan, computed)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    finish(&*lock(&db)?, builtin(), &input, plan, computed)
 }
 
 #[cfg(test)]

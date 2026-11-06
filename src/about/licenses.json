@@ -43,6 +43,11 @@
       "license": "MIT OR Apache-2.0"
     },
     {
+      "name": "chacha20poly1305",
+      "version": "0.10.1",
+      "license": "Apache-2.0 OR MIT"
+    },
+    {
       "name": "chrono",
       "version": "0.4.45",
       "license": "MIT OR Apache-2.0"
@@ -60,6 +65,11 @@
     {
       "name": "hex",
       "version": "0.4.3",
+      "license": "MIT OR Apache-2.0"
+    },
+    {
+      "name": "hkdf",
+      "version": "0.13.0",
       "license": "MIT OR Apache-2.0"
     },
     {

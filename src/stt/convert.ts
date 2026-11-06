@@ -1,4 +1,4 @@
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { mediaUrl } from '../lib/media';
 import { encodeWav16 } from './wav';
 
 export const STT_RATE = 16000;
@@ -27,9 +27,9 @@ export async function toWav16k(data: ArrayBuffer): Promise<Uint8Array> {
   return encodeWav16(rendered.getChannelData(0), STT_RATE);
 }
 
-/** 저장된 첨부 파일(asset 프로토콜)을 읽어 WAV로 바꾼다. */
-export async function attachmentToWav(absPath: string): Promise<Uint8Array> {
-  const res = await fetch(convertFileSrc(absPath));
+/** 저장된 첨부 파일(tgmedia 프로토콜, 첨부 id)을 읽어 WAV로 바꾼다. */
+export async function attachmentToWav(id: string): Promise<Uint8Array> {
+  const res = await fetch(mediaUrl(id));
   if (!res.ok) throw new Error('녹음 파일을 읽을 수 없습니다');
   return toWav16k(await res.arrayBuffer());
 }

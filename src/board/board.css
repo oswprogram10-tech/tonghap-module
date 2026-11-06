@@ -504,3 +504,54 @@
 .bd-sum-val {
   font-variant-numeric: tabular-nums;
 }
+
+/* 타이머 소리 방식과 안내 음성 바꾸기 */
+.bd-sound {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+.bd-sound-label {
+  font-weight: 700;
+  margin-right: 4px;
+}
+.bd-voice {
+  max-width: 960px;
+  margin: 16px auto 0;
+}
+.bd-voice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.bd-voice-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 3px solid var(--bd-line);
+  border-radius: 16px;
+  background: #fff;
+}
+.bd-voice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 360px;
+}
+.bd-voice-tag {
+  font-size: 0.7em;
+  opacity: 0.75;
+}
+.bd-voice-btns {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}

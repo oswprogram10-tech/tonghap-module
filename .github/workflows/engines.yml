@@ -23,6 +23,9 @@ jobs:
       WHISPER_MODEL_SHA256: 818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7
       LLM_MODEL_URL: https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf
       LLM_MODEL_SHA256: 9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031
+      # 뜻 임베딩 모델(설계 22). 앱이 내려받는 것과 같은 파일이다(src-tauri/src/diag/mod.rs의 e5-small-q8).
+      EMBED_MODEL_URL: https://huggingface.co/TwinSunsLLC/multilingual-e5-small-gguf/resolve/main/multilingual-e5-small-q8_0.gguf
+      EMBED_MODEL_SHA256: e011debc1208e31bf7b6aebee2d9fc8bd2ca11694a77ed66ac9d0c9d0a877c93
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -46,7 +49,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}\engine-test-models
-          key: engine-test-models-${{ env.WHISPER_MODEL_SHA256 }}-${{ env.LLM_MODEL_SHA256 }}
+          key: engine-test-models-${{ env.WHISPER_MODEL_SHA256 }}-${{ env.LLM_MODEL_SHA256 }}-${{ env.EMBED_MODEL_SHA256 }}
 
       - name: 테스트 모델 내려받기(재시도, SHA-256 확인)
         shell: pwsh
@@ -80,6 +83,7 @@ jobs:
 
           Get-Model $env:WHISPER_MODEL_URL $env:WHISPER_MODEL_SHA256 'ggml-tiny-q5_1.bin'
           Get-Model $env:LLM_MODEL_URL $env:LLM_MODEL_SHA256 'Qwen3-0.6B-Q8_0.gguf'
+          Get-Model $env:EMBED_MODEL_URL $env:EMBED_MODEL_SHA256 'multilingual-e5-small-q8_0.gguf'
 
           # 테스트가 읽는 환경 변수(절대 경로)
           $ws = $env:GITHUB_WORKSPACE
@@ -88,6 +92,7 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_ENGINES_DIR=$(Join-Path $ws 'src-tauri\resources\engines')"
           Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_TEST_WHISPER_MODEL=$(Join-Path $dir 'ggml-tiny-q5_1.bin')"
           Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_TEST_LLM_MODEL=$(Join-Path $dir 'Qwen3-0.6B-Q8_0.gguf')"
+          Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_TEST_EMBED_MODEL=$(Join-Path $dir 'multilingual-e5-small-q8_0.gguf')"
           Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_TEST_LOG_DIR=$logs"
           Add-Content -Path $env:GITHUB_ENV -Value "TONGHAP_REQUIRE_ENGINES=1"
 

@@ -1,8 +1,8 @@
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { mediaUrl } from '../lib/media';
 import Transcript from '../stt/Transcript';
 import type { Attachment } from './api';
 
-/** 저장된 첨부: 사진 썸네일과 음성 재생. 파일은 asset 프로토콜(미디어 폴더 한정)로 연다. */
+/** 저장된 첨부: 사진 썸네일과 음성 재생. 파일은 첨부 id로 tgmedia 프로토콜에 요청한다(디스크의 파일은 암호문). */
 export default function AttachmentView({
   attachments,
   onRemove,
@@ -19,10 +19,10 @@ export default function AttachmentView({
             a.mime === 'image/heic' ? (
               <span className="rec-chip-static">사진(HEIC) {a.relPath.split('/').pop()}</span>
             ) : (
-              <img src={convertFileSrc(a.absPath)} alt="관찰 사진" loading="lazy" />
+              <img src={mediaUrl(a.id)} alt="관찰 사진" loading="lazy" />
             )
           ) : (
-            <audio controls preload="none" src={convertFileSrc(a.absPath)} />
+            <audio controls preload="none" src={mediaUrl(a.id)} />
           )}
           {a.kind === 'audio' && <Transcript attachment={a} />}
           {onRemove && (

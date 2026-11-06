@@ -14,6 +14,8 @@
 | Whisper base q5_1 ggml (내려받기) | 음성 메모 자동 자막(느린 PC용) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
 | SQLCipher (rusqlite에 함께 빌드) | 기록 데이터베이스 암호화(AES-256) | BSD-3-Clause 형식(Zetetic LLC) | https://github.com/sqlcipher/sqlcipher |
 | OpenSSL (openssl-src로 함께 빌드) | SQLCipher의 암호 기능 | Apache-2.0 | https://github.com/openssl/openssl |
+| multilingual-e5-small GGUF Q8_0 (내려받기) | 질문 묶기, 활동 추천(뜻 검색) | MIT (원 모델 intfloat/multilingual-e5-small, GGUF 변환 TwinSunsLLC) | https://huggingface.co/TwinSunsLLC/multilingual-e5-small-gguf |
+| 타이머 안내 음성(앱에 포함된 소리 파일 3개) | 칠판 타이머 안내 | MeloTTS(MIT)로 생성. 생성에 쓴 한국어 BERT kykim/bert-kor-base: 저장소 License 항목 Apache-2.0 | https://github.com/myshell-ai/MeloTTS , https://github.com/kiyoungkim1/LM-kor |
 
 ## llama.cpp, whisper.cpp 라이선스 전문
 

@@ -1,11 +1,15 @@
+import { useState } from 'react';
+import { SOUND_MODES, type SoundMode } from './cues';
 import { formatClock } from './random';
+import VoiceEditor from './VoiceEditor';
 import type { TimerState } from './useTimer';
 
 const PRESETS = [1, 3, 5, 10, 15];
 const R = 140;
 const C = 2 * Math.PI * R;
 
-export default function TimerTab({ timer }: { timer: TimerState }) {
+export default function TimerTab({ timer, sound, onSound }: { timer: TimerState; sound: SoundMode; onSound: (m: SoundMode) => void }) {
+  const [editing, setEditing] = useState(false);
   const { total, remaining, running, setTotal } = timer;
   const idle = !running && remaining === total;
   const hot = remaining <= 10 && (running || remaining < total);
@@ -48,6 +52,19 @@ export default function TimerTab({ timer }: { timer: TimerState }) {
           재설정
         </button>
       </div>
+
+      <div className="bd-sound" role="group" aria-label="소리 방식">
+        <span className="bd-sound-label">소리</span>
+        {SOUND_MODES.map((m) => (
+          <button key={m.id} className={sound === m.id ? 'bd-opt on' : 'bd-opt'} aria-pressed={sound === m.id} onClick={() => onSound(m.id)}>
+            {m.label}
+          </button>
+        ))}
+        <button className="bd-opt" aria-expanded={editing} onClick={() => setEditing(!editing)}>
+          안내 음성 바꾸기
+        </button>
+      </div>
+      {editing && <VoiceEditor />}
 
       {idle && (
         <div className="bd-custom" aria-label="직접 시간 정하기">

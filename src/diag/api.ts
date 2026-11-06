@@ -37,10 +37,13 @@ export interface EngineInfo {
 /** 「평어 초안 모델」 칸에서 따로 보여 주는 모델(측정용 목록에는 넣지 않는다). */
 export const EVAL_MODEL_IDS: string[] = ['qwen3-4b-q4km'];
 
+/** 「질문 묶기·활동 추천」 칸에서 따로 보여 주는 뜻 임베딩 모델(측정용 목록에는 넣지 않는다). */
+export const EMBED_MODEL_IDS: string[] = ['e5-small-q8'];
+
 export interface ModelStatus {
   id: string;
   label: string;
-  kind: 'llm' | 'stt';
+  kind: 'llm' | 'stt' | 'embed';
   fileName: string;
   size: number;
   license: string;

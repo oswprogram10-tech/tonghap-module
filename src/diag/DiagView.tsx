@@ -4,6 +4,7 @@ import { pickFile } from '../lib/dialogs';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { STT_MODELS, sttApi, type SttStatus } from '../stt/api';
 import {
+  EMBED_MODEL_IDS,
   EVAL_MODEL_IDS,
   diagApi,
   type DownloadProgress,
@@ -237,7 +238,7 @@ function DiagPanel() {
           받은 파일을 「파일 선택」으로 가져오세요.
         </p>
         <ul className="model-list">
-          {models.filter((m) => !SUBTITLE_IDS.includes(m.id) && !EVAL_MODEL_IDS.includes(m.id)).map((m) => (
+          {models.filter((m) => !SUBTITLE_IDS.includes(m.id) && !EVAL_MODEL_IDS.includes(m.id) && !EMBED_MODEL_IDS.includes(m.id)).map((m) => (
             <ModelRow
               key={m.id}
               model={m}
@@ -259,6 +260,28 @@ function DiagPanel() {
         </p>
         <ul className="model-list">
           {models.filter((m) => EVAL_MODEL_IDS.includes(m.id)).map((m) => (
+            <ModelRow
+              key={m.id}
+              model={m}
+              progress={progress[m.id]}
+              error={modelErrors[m.id]}
+              disabled={busyModel || running}
+              onDownload={() => download(m.id)}
+              onImport={() => importFile(m)}
+            />
+          ))}
+        </ul>
+        {engines && !engines.llamaServer && <p className="diag-error">언어 모델 서버(llama-server)가 없습니다.</p>}
+      </section>
+
+      <section className="diag-section" aria-label="질문 묶기·활동 추천">
+        <h2>질문 묶기·활동 추천(선택, 약 130MB)</h2>
+        <p className="diag-hint">
+          학생 질문과 뜻이 가까운 활동 카드를 더 잘 찾고, 비슷한 질문끼리 묶어 줍니다. 이 PC 안에서만 계산하고 아이 말은 어디에도 저장하지 않습니다.
+          모델이 없어도 지금처럼 낱말로 추천합니다.
+        </p>
+        <ul className="model-list">
+          {models.filter((m) => EMBED_MODEL_IDS.includes(m.id)).map((m) => (
             <ModelRow
               key={m.id}
               model={m}

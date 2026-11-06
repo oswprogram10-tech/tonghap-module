@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { errorText } from '../records/api';
 import { ActivityCardView } from './ActivityPicker';
-import { activitiesApi, type Activity, type Recommendation } from './activities';
+import { activitiesApi, embedApi, questionLines, type Activity, type QuestionGroup, type Recommendation } from './activities';
 import { unitsApi, type Session, type UnitDetail } from './api';
 
 interface Props {
@@ -25,13 +25,60 @@ export default function FollowUpDialog({ unit, session, initialQuestions, initia
   const [recs, setRecs] = useState<Recommendation[] | null>(null);
   const [recError, setRecError] = useState<string | null>(null);
   const [card, setCard] = useState<Activity | null>(null);
+  // 뜻이 비슷한 질문 묶기(모델이 있을 때만). 묶음은 화면에만 두고 저장하지 않는다.
+  const [canGroup, setCanGroup] = useState(false);
+  const [groups, setGroups] = useState<QuestionGroup[] | null>(null);
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupError, setGroupError] = useState<string | null>(null);
+  const [focus, setFocus] = useState<number | null>(null);
+
+  useEffect(() => {
+    let stale = false;
+    embedApi
+      .status()
+      .then((s) => {
+        if (!stale) setCanGroup(s.ready);
+      })
+      .catch(() => {
+        if (!stale) setCanGroup(false);
+      });
+    return () => {
+      stale = true;
+    };
+  }, []);
+
+  const lines = questionLines(questions);
+  // 추천에 쓰는 질문: 묶음을 눌렀으면 그 묶음의 질문들, 아니면 적은 질문 전체.
+  const recQuestions = focus !== null && groups?.[focus] ? groups[focus].questions.join('\n') : questions;
+
+  const changeQuestions = (v: string) => {
+    setQuestions(v);
+    // 질문을 고치면 묶음은 낡은 것이 된다.
+    setGroups(null);
+    setFocus(null);
+    setGroupError(null);
+  };
+
+  const group = async () => {
+    setGroupBusy(true);
+    setGroupError(null);
+    setFocus(null);
+    try {
+      setGroups(await embedApi.cluster(lines));
+    } catch (e) {
+      setGroups(null);
+      setGroupError(errorText(e));
+    } finally {
+      setGroupBusy(false);
+    }
+  };
 
   // 학생 질문 입력이 멈추고 0.5초 뒤에 카드를 추천받는다.
   useEffect(() => {
     let stale = false;
     const timer = setTimeout(() => {
       activitiesApi
-        .recommend({ unitId: unit.id, afterSessionId: session.id, questions })
+        .recommend({ unitId: unit.id, afterSessionId: session.id, questions: recQuestions })
         .then((r) => {
           if (stale) return;
           setRecs(r);
@@ -45,7 +92,7 @@ export default function FollowUpDialog({ unit, session, initialQuestions, initia
       stale = true;
       clearTimeout(timer);
     };
-  }, [unit.id, session.id, questions]);
+  }, [unit.id, session.id, recQuestions]);
 
   const pick = (a: Activity) => {
     if (card?.id === a.id) {
@@ -80,8 +127,37 @@ export default function FollowUpDialog({ unit, session, initialQuestions, initia
         <h2>「{session.title}」 마치기</h2>
         <label className="rec-field">
           학생 질문·반응
-          <textarea className="rec-textarea" rows={4} value={questions} placeholder="아이들이 궁금해한 것, 이어서 해 보고 싶다고 한 것" onChange={(e) => setQuestions(e.target.value)} />
+          <textarea className="rec-textarea" rows={4} value={questions} placeholder="아이들이 궁금해한 것, 이어서 해 보고 싶다고 한 것" onChange={(e) => changeQuestions(e.target.value)} />
         </label>
+        {canGroup && lines.length >= 3 && (
+          <div className="rec-row rec-wrap" style={{ marginTop: 8 }}>
+            <button type="button" className="diag-secondary" disabled={groupBusy} onClick={group}>
+              {groupBusy ? '묶는 중…' : '비슷한 질문 묶기'}
+            </button>
+            <span className="diag-hint">질문을 줄마다 하나씩 적으면 뜻이 비슷한 것끼리 묶어 줍니다. 묶음은 저장되지 않습니다.</span>
+          </div>
+        )}
+        {groupError && <p className="diag-error">{groupError}</p>}
+        {groups !== null && (
+          <ul className="act-list" aria-label="비슷한 질문 묶음" style={{ marginTop: 8 }}>
+            {groups.map((g, i) => (
+              <li key={i} className="unit-q-group" style={{ border: '2px solid var(--line)', borderRadius: 14, padding: 12, listStyle: 'none', marginBottom: 8 }}>
+                <strong>
+                  {g.questions.length > 1 ? `묶음 ${i + 1}` : '혼자 남은 질문'} · {g.questions.length}개
+                </strong>
+                <p className="diag-hint">대표 질문: {g.representative}</p>
+                <ul>
+                  {g.questions.map((q, k) => (
+                    <li key={k}>{q}</li>
+                  ))}
+                </ul>
+                <button type="button" className="diag-secondary" aria-pressed={focus === i} style={{ marginTop: 8 }} onClick={() => setFocus(focus === i ? null : i)}>
+                  {focus === i ? '이 묶음으로 추천 중 (다시 누르면 전체)' : '이 묶음으로 추천받기'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <label className="rec-field" style={{ marginTop: 8 }}>
           성찰
           <textarea className="rec-textarea" rows={3} value={reflection} onChange={(e) => setReflection(e.target.value)} />

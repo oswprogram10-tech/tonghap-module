@@ -4,7 +4,7 @@
 
 소스 코드 안내: 아래 Rust 크레이트는 수정하지 않고 사용했으며, 각 크레이트의 소스 코드는 아래에 적힌 이름과 버전으로 https://crates.io 에서 받을 수 있습니다. Mozilla Public License 2.0(MPL-2.0) 구성 요소도 같은 곳에서 원본 소스를 받을 수 있습니다.
 
-- Cargo.lock SHA-256: `5552944edb10bd4f2a92b391290d0c63624c1f72d58f2c3590641ccc87afcee2`
+- Cargo.lock SHA-256: `2c34034fdbb69b5658b88b2ab6fca683faf44455209d320d30f181b9acd9dd0c`
 - package-lock.json SHA-256: `8c5a0868f0b74a80ff32adcaebb9032d1db29f607e1954f9495e7d8db62a3154`
 
 ---
@@ -677,7 +677,7 @@ SOFTWARE.
 
 | 라이선스 | 크레이트 수 |
 |---|---|
-| MIT License | 330 |
+| MIT License | 333 |
 | Unicode License v3 | 19 |
 | BSD 3-Clause "New" or "Revised" License | 9 |
 | Apache License 2.0 | 6 |
@@ -2427,7 +2427,7 @@ SOFTWARE.
 
 ##### MIT License
 
-사용하는 크레이트: hkdf 0.12.4
+사용하는 크레이트: hkdf 0.12.4, hkdf 0.13.0
 
 ~~~~text
 Copyright (c) 2015-2018 Vlad Filippov
@@ -2911,7 +2911,7 @@ DEALINGS IN THE SOFTWARE.
 
 ##### MIT License
 
-사용하는 크레이트: digest 0.10.7, hmac 0.12.1
+사용하는 크레이트: digest 0.10.7, hmac 0.12.1, hmac 0.13.0
 
 ~~~~text
 Copyright (c) 2017 Artyom Pavlov
@@ -4745,7 +4745,7 @@ DEALINGS IN THE SOFTWARE.
 
 ##### MIT License
 
-사용하는 크레이트: hybrid-array 0.4.15
+사용하는 크레이트: cmov 0.5.4, hybrid-array 0.4.15
 
 ~~~~text
 Copyright (c) 2022-2026 The RustCrypto Project Developers
@@ -4947,6 +4947,39 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+~~~~
+
+##### MIT License
+
+사용하는 크레이트: ctutils 0.4.8
+
+~~~~text
+Copyright (c) 2025-2026 The RustCrypto Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 ~~~~
 
@@ -5328,35 +5361,6 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
-
-~~~~
-
-##### MIT License
-
-사용하는 크레이트: http-range 0.1.6
-
-~~~~text
-MIT License
-
-Copyright (c) 2016 Luka Zakrajšek
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 
 ~~~~
 

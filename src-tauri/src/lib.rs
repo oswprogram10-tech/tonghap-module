@@ -2,12 +2,14 @@ mod about;
 mod backup;
 mod db;
 mod diag;
+mod embed;
 mod engine;
 mod llm_server;
 mod logging;
 mod paths;
 mod stt;
 mod support;
+mod voice;
 mod webdriver;
 #[doc(hidden)]
 pub mod testing;
@@ -47,10 +49,6 @@ pub fn run() {
                     sysinfo::System::long_os_version().unwrap_or_else(|_| std::env::consts::OS.to_string())
                 ),
             );
-            // 테스트용 폴더를 쓰면 설정 파일의 asset 범위($APPLOCALDATA)가 맞지 않으므로 사진 폴더를 따로 허용한다.
-            if cfg!(debug_assertions) && std::env::var_os(paths::DATA_DIR_ENV).is_some_and(|v| !v.is_empty()) {
-                let _ = app.asset_protocol_scope().allow_directory(local.join("data").join("media"), true);
-            }
             let data_dir = local.join("data");
             backup::cleanup_leftovers(&data_dir);
             let opened = logging::log_err("db", "데이터베이스 열기", db::open_full(&data_dir))?;
@@ -66,12 +64,24 @@ pub fn run() {
             }
             app.manage(std::sync::Mutex::new(conn));
             app.manage(media);
+            // 사진·음성 암호화(설계 21): 키는 키 파일에서 다시 읽고, 기존 평문 파일은 DB가 정상일 때만 백그라운드에서 바꾼다.
+            let media_key = db::media::load_key(&data_dir);
+            let convert = matches!(db_state, db::DbState::Ok);
+            let media_progress = std::sync::Arc::new(db::media::Progress::default());
+            app.manage(db::media::MediaKeyHolder::new(media_key.clone()));
+            app.manage(media_progress.clone());
+            db::media::start(&data_dir, media_key, convert, media_progress);
             app.manage(db::DbStatus(std::sync::Mutex::new(db_state)));
             stt::start(app.handle())?;
             llm_server::start(app.handle());
+            embed::start(app.handle());
             // 메인 창은 상태를 모두 등록한 뒤 만든다(tauri.conf.json의 create:false).
             webdriver::create_main_window(app.handle())?;
             Ok(())
+        })
+        .register_asynchronous_uri_scheme_protocol(db::media_serve::SCHEME, |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || responder.respond(db::media_serve::respond(&app, &request)));
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -83,6 +93,7 @@ pub fn run() {
             webdriver::e2e_debug_hooks,
             about::about_storage,
             db::db_state,
+            db::media::media_protection,
             logging::log_frontend_error,
             support::support_preview,
             support::support_create,
@@ -141,6 +152,8 @@ pub fn run() {
             db::activities::activity_custom_save,
             db::activities::activity_custom_delete,
             db::activities::activity_recommend,
+            embed::embed_status,
+            embed::question_cluster,
             db::habits::habit_list,
             db::habits::habit_save,
             db::habits::habit_delete,
@@ -174,6 +187,9 @@ pub fn run() {
             db::evaluation::eval_combined_unconfirm,
             db::settings::settings_get,
             db::settings::settings_set,
+            voice::voice_get,
+            voice::voice_set,
+            voice::voice_clear,
             backup::backup_create,
             backup::backup_inspect,
             backup::backup_restore,
@@ -189,6 +205,9 @@ pub fn run() {
                 logging::info("app", "종료");
                 if let Some(server) = app.try_state::<std::sync::Arc<llm_server::LlmServer>>() {
                     server.shutdown();
+                }
+                if let Some(server) = app.try_state::<embed::EmbedServer>() {
+                    server.0.shutdown();
                 }
             }
         });

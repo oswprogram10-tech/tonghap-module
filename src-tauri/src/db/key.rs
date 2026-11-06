@@ -14,6 +14,7 @@ pub const KEY_FILE: &str = "db.key";
 const HEAD_DPAPI: &[u8] = b"DPAPI1";
 const HEAD_PLAIN: &[u8] = b"PLAIN1";
 pub const KEY_LEN: usize = 32;
+const MEDIA_KEY_INFO: &[u8] = b"tonghap-media-v1";
 /// DPAPI 추가 엔트로피(앱 식별자). `tauri.conf.json`의 identifier와 같다.
 pub const APP_ENTROPY: &[u8] = b"io.github.oswprogram10-tech.tonghap";
 
@@ -36,6 +37,15 @@ impl DbKey {
     #[cfg(test)]
     pub fn from_bytes(raw: [u8; KEY_LEN]) -> Self {
         Self(raw)
+    }
+
+    /// 사진·음성 파일용 키: HKDF-SHA256(DB 키, salt 없음, info `tonghap-media-v1`) 32바이트.
+    /// DB 키를 그대로 쓰지 않고 용도별로 나눈다(설계 21 1절).
+    pub fn derive_media_key(&self) -> [u8; KEY_LEN] {
+        let hk = hkdf::Hkdf::<sha2::Sha256>::new(None, &self.0);
+        let mut out = [0u8; KEY_LEN];
+        hk.expand(MEDIA_KEY_INFO, &mut out).expect("32바이트는 HKDF-SHA256 출력 한도 안이다");
+        out
     }
 
     /// `PRAGMA key`에 넘기는 원본 키 표기(`x'<64 hex>'`). 문자열 키 유도를 거치지 않는다.

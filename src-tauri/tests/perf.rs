@@ -14,6 +14,10 @@ use tonghap_module_lib::testing::*;
 
 const RUNS: usize = 5;
 
+fn perf_key() -> MediaKey {
+    MediaKey::from_db_key(&DbKey::generate().unwrap())
+}
+
 struct Row {
     name: &'static str,
     median: Duration,
@@ -67,7 +71,7 @@ fn year_scale_timings_stay_under_limits() {
     };
     println!("DB: {}", if plain { "평문(비교용)" } else { "SQLCipher 암호화" });
     let t = Instant::now();
-    let s = seed_year(&mut conn, &media, &SeedOpts::default()).unwrap();
+    let s = seed_year(&mut conn, &media, &perf_key(), &SeedOpts::default()).unwrap();
     println!("seed_year: {:.0}ms", ms(t.elapsed()));
 
     let student = s.student_ids[0].clone();
@@ -165,7 +169,7 @@ fn year_scale_encryption_conversion_time() {
         let mut conn = Connection::open(dir.join("tonghap.db")).unwrap();
         conn.pragma_update(None, "journal_mode", "WAL").unwrap();
         prepare(&conn).unwrap();
-        seed_year(&mut conn, &dir.join("media"), &SeedOpts::default()).unwrap();
+        seed_year(&mut conn, &dir.join("media"), &perf_key(), &SeedOpts::default()).unwrap();
     }
     let bytes = std::fs::metadata(dir.join("tonghap.db")).unwrap().len();
     let t = Instant::now();
