@@ -1,9 +1,10 @@
 [package]
 name = "tonghap-module"
-version = "0.14.0"
+version = "0.15.0"
 description = "2022 개정 초등 통합교과 수업 지원 앱 (가칭 바슬즐 탐험대)"
 edition = "2021"
 rust-version = "1.80"
+publish = false
 
 [lib]
 # Tauri 2 권장 구성. 이름이 bin과 겹치지 않도록 _lib 접미사 사용.
