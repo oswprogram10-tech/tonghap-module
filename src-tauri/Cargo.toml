@@ -1,6 +1,6 @@
 [package]
 name = "tonghap-module"
-version = "0.15.0"
+version = "0.16.0"
 description = "2022 개정 초등 통합교과 수업 지원 앱 (가칭 바슬즐 탐험대)"
 edition = "2021"
 rust-version = "1.80"

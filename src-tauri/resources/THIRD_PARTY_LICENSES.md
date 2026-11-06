@@ -4,8 +4,8 @@
 
 소스 코드 안내: 아래 Rust 크레이트는 수정하지 않고 사용했으며, 각 크레이트의 소스 코드는 아래에 적힌 이름과 버전으로 https://crates.io 에서 받을 수 있습니다. Mozilla Public License 2.0(MPL-2.0) 구성 요소도 같은 곳에서 원본 소스를 받을 수 있습니다.
 
-- Cargo.lock SHA-256: `2c34034fdbb69b5658b88b2ab6fca683faf44455209d320d30f181b9acd9dd0c`
-- package-lock.json SHA-256: `8c5a0868f0b74a80ff32adcaebb9032d1db29f607e1954f9495e7d8db62a3154`
+- Cargo.lock SHA-256: `e7a46a846a48e1d35efbc042ece1fada7143974a0bc21b188433a87b8e88f491`
+- package-lock.json SHA-256: `4f9392fe1c63ded28f2553769821fc6a902b2da3e7ebbded924b93b942bb5575`
 
 ---
 
@@ -25,6 +25,8 @@
 | Whisper base q5_1 ggml (내려받기) | 음성 메모 자동 자막(느린 PC용) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
 | SQLCipher (rusqlite에 함께 빌드) | 기록 데이터베이스 암호화(AES-256) | BSD-3-Clause 형식(Zetetic LLC) | https://github.com/sqlcipher/sqlcipher |
 | OpenSSL (openssl-src로 함께 빌드) | SQLCipher의 암호 기능 | Apache-2.0 | https://github.com/openssl/openssl |
+| multilingual-e5-small GGUF Q8_0 (내려받기) | 질문 묶기, 활동 추천(뜻 검색) | MIT (원 모델 intfloat/multilingual-e5-small, GGUF 변환 TwinSunsLLC) | https://huggingface.co/TwinSunsLLC/multilingual-e5-small-gguf |
+| 타이머 안내 음성(앱에 포함된 소리 파일 3개) | 칠판 타이머 안내 | MeloTTS(MIT)로 생성. 생성에 쓴 한국어 BERT kykim/bert-kor-base: 저장소 License 항목 Apache-2.0 | https://github.com/myshell-ai/MeloTTS , https://github.com/kiyoungkim1/LM-kor |
 
 ### llama.cpp, whisper.cpp 라이선스 전문
 
