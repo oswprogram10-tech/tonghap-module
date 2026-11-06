@@ -28,6 +28,9 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 기록 DB 암호화(SQLCipher)가 OpenSSL을 소스로 빌드한다. 이 작업은 Git Bash로 돌아 PATH의 Git용 perl이 먼저 잡히는데,
+      # 그 perl에는 OpenSSL 설정에 필요한 모듈(Locale::Maketext::Simple)이 없다. 러너에 있는 Strawberry Perl을 쓴다.
+      OPENSSL_SRC_PERL: C:\Strawberry\perl\bin\perl.exe
     defaults:
       run:
         shell: bash
