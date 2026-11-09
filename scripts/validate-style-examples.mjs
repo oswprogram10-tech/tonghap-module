@@ -27,13 +27,16 @@ const hitForbidden = (text) => {
 const jong = (ch) => { const c = ch.charCodeAt(0) - 0xac00; return c >= 0 && c < 11172 ? c % 28 : -1; };
 export const sentences = (text) => text.split(/(?<=\.)\s+/).map((s) => s.trim()).filter(Boolean);
 /** 명사형 종결: 마침표 앞 글자가 ㅁ 받침(함, 음, 됨, 보임, 느낌, 씀…). */
-export const nominalEnding = (s) => s.endsWith('.') && jong(s.at(-2)) === 16;
+// ㅁ(16) 또는 ㄻ(10) 받침: 함·음·됨·보임, 만듦·앎·삶.
+export const nominalEnding = (s) => s.endsWith('.') && [10, 16].includes(jong(s.at(-2)));
 
-const LIMITS = { subject: [40, 200], integrated: [200, 500] };
+const LIMITS = { subject: [40, 200], integrated: [200, 500], behavior: [150, 700] };
+// 행동특성 및 종합의견: 단점(지도가 필요한 모습)을 쓸 때는 변화 가능성을 함께 쓴다(기재요령).
+const GROWTH = ['노력', '점차', '나아지', '나아졌', '성장', '기대', '꾸준히', '연습', '좋아지', '좋아졌', '익혀', '자리 잡'];
 const errors = [];
 const seen = new Set();
 const lines = readFileSync(target, 'utf8').split('\n').filter((l) => l.trim());
-const count = { subject: 0, integrated: 0, ham: 0, eum: 0, boim: 0 };
+const count = { subject: 0, integrated: 0, behavior: 0, ham: 0, eum: 0, boim: 0 };
 
 lines.forEach((line, i) => {
   const at = `${i + 1}행`;
@@ -44,9 +47,10 @@ lines.forEach((line, i) => {
   if (seen.has(o.id)) err('id 중복');
   seen.add(o.id);
   if (o.source !== 'ai-draft' && o.source !== 'teacher') err('source는 ai-draft 또는 teacher');
-  if (!['subject', 'integrated'].includes(o.kind)) { err('kind는 subject 또는 integrated'); return; }
+  if (!['subject', 'integrated', 'behavior'].includes(o.kind)) { err('kind는 subject, integrated, behavior'); return; }
   if (!['ham', 'eum', 'boim'].includes(o.style)) err('style은 ham, eum, boim');
-  if (![1, 2].includes(o.grade) || ![1, 2].includes(o.semester)) err('grade·semester는 1 또는 2');
+  if (![1, 2].includes(o.grade)) err('grade는 1 또는 2');
+  if (!(o.kind === 'behavior' ? [0, 1, 2] : [1, 2]).includes(o.semester)) err('semester는 1 또는 2(행발은 학년 전체 0도 가능)');
   count[o.kind]++; count[o.style]++;
 
   for (const t of o.topics ?? []) {
@@ -58,6 +62,9 @@ lines.forEach((line, i) => {
   if (o.kind === 'subject') {
     if (!['바', '슬', '즐'].includes(o.subject)) err('subject는 바, 슬, 즐');
     if (!(o.standards ?? []).every((c) => c.startsWith(`[2${o.subject}`))) err('성취기준 교과가 subject와 다름');
+  } else if (o.kind === 'behavior') {
+    if (o.guidance === true && !GROWTH.some((w) => (o.text ?? '').includes(w))) err('지도가 필요한 모습을 쓴 행발에 변화 가능성 표현이 없음');
+    if (o.split === true && !((o.text ?? '').startsWith('(1학기)') && (o.text ?? '').includes(' (2학기)'))) err('학기 나누기 행발은 「(1학기)」로 시작하고 「 (2학기)」가 있어야 함');
   } else {
     for (const s of ['바', '슬', '즐']) if (!(o.standards ?? []).some((c) => c.startsWith(`[2${s}`))) err(`통합본에 ${s} 교과 성취기준이 없음(교과 누락)`);
   }
@@ -81,4 +88,4 @@ if (errors.length) {
   for (const e of errors) console.error(`오류: ${e}`);
   process.exit(1);
 }
-console.log(`평어 문체 예시 검증 통과: ${lines.length}개 (교과별 ${count.subject}, 통합 ${count.integrated} / 함 ${count.ham}, 하였음 ${count.eum}, 모습을 보임 ${count.boim})`);
+console.log(`평어 문체 예시 검증 통과: ${lines.length}개 (교과별 ${count.subject}, 통합 ${count.integrated}, 행발 ${count.behavior} / 함 ${count.ham}, 하였음 ${count.eum}, 모습을 보임 ${count.boim})`);

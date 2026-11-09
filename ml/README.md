@@ -46,6 +46,7 @@ node --test ml/synth/generate-bundles.test.mjs
 - 한 줄 예: `{"id":"int-01","source":"ai-draft","kind":"integrated","grade":1,"semester":1,"topics":["학교","사람들"],"standards":["[2바01-01]",…],"style":"ham","profile":"고르게 참여","text":"…함. …함."}`
   - `kind`: `subject`(한 교과 1~2문장, 40~200자) / `integrated`(세 교과 통합, 200~500자). `profile`은 학습용 설명이고 평어에 들어가지 않는다.
 - 검증: `node scripts/validate-style-examples.mjs` (`npm run validate:data`에 포함). 금지 표현, 「학생」·이름 자리표시, 특수문자·번호, 문장마다 명사형 종결, 문체(`ham`/`eum`/`boim`) 일관, 통합본의 세 교과 성취기준, 주제책과 학년·학기 대응을 검사한다.
+- 행동특성 및 종합의견 예시 20개(`kind: "behavior"`, 150~700자): `semester`가 0이면 학년 전체, `split: true`면 「(1학기)」「(2학기)」로 나눈 글, `guidance: true`면 지도가 필요한 모습과 변화 가능성을 함께 쓴 글(검증이 변화 표현을 확인). 근거: 지침 제16조, 기재요령 「단점을 입력하는 경우 변화 가능성을 함께 입력」.
 - **교사 검수 필요**: 학교 문체와 다르면 고치거나 지우고, 교사가 쓴 예시는 `"source": "teacher"`로 같은 파일에 더한다.
 
 ### A-2. 교사 예시 (사용자)
