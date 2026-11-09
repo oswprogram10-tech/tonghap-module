@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { copyText } from '../lib/clipboard';
 import { errorText } from '../records/api';
-import { evalApi, type CombinedCheck, type CombinedKey, type CombinedView } from './api';
+import { REVIEW_NOTICE, UNCHANGED_NOTICE, evalApi, type CombinedCheck, type CombinedKey, type CombinedView } from './api';
 
 interface Props {
   studentId: string;
@@ -20,6 +20,8 @@ export default function CombinedPanel({ studentId, from, to, refresh, onChanged 
   const [check, setCheck] = useState<CombinedCheck | null>(null);
   const [busy, setBusy] = useState(false);
   const [askOverwrite, setAskOverwrite] = useState(false);
+  const [askUnchanged, setAskUnchanged] = useState(false);
+  const [reviewed, setReviewed] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
@@ -28,6 +30,7 @@ export default function CombinedPanel({ studentId, from, to, refresh, onChanged 
   const apply = useCallback((v: CombinedView) => {
     setView(v);
     setText(v.combined?.text ?? '');
+    setReviewed(v.combined?.reviewed ?? false);
     setCheck(v.check);
   }, []);
 
@@ -50,7 +53,7 @@ export default function CombinedPanel({ studentId, from, to, refresh, onChanged 
   }, [key, refresh, apply]);
 
   const saved = view?.combined?.text ?? '';
-  const dirty = view?.combined != null && text !== saved;
+  const dirty = view?.combined != null && (text !== saved || reviewed !== view.combined.reviewed);
   dirtyRef.current = dirty;
 
   // 편집하는 동안 경고를 다시 계산한다(저장하지 않고 검사만).
@@ -90,15 +93,25 @@ export default function CombinedPanel({ studentId, from, to, refresh, onChanged 
   const saveNow = () =>
     run(async () => {
       if (!view?.combined) return;
-      apply(await evalApi.combinedSave(view.combined.id, text));
+      apply(await evalApi.combinedSave(view.combined.id, text, reviewed));
       setInfo('저장했습니다.');
       onChanged();
     });
 
-  const confirm = () =>
+  /** 확정. 언어 모델이 쓴 평어를 한 글자도 고치지 않았으면 먼저 한 번 더 묻는다(막지는 않는다). */
+  const confirm = (skipAsk = false) =>
     run(async () => {
       if (!view?.combined) return;
-      if (dirty) await evalApi.combinedSave(view.combined.id, text);
+      setAskUnchanged(false);
+      let v = view;
+      if (dirty) {
+        v = await evalApi.combinedSave(view.combined.id, text, reviewed);
+        apply(v);
+      }
+      if (!skipAsk && v.combined?.unchangedFromModel) {
+        setAskUnchanged(true);
+        return;
+      }
       apply(await evalApi.combinedConfirm(view.combined.id));
       setInfo('확정했습니다. 이제 복사할 수 있어요.');
       onChanged();
@@ -191,6 +204,11 @@ export default function CombinedPanel({ studentId, from, to, refresh, onChanged 
           )}
           {blocked.length > 0 && <p className="diag-hint">금지 표현이나 다른 학생 이름을 고쳐야 확정할 수 있어요.</p>}
 
+          <label className={reviewed ? 'ev-review on' : 'ev-review'}>
+            <input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} aria-label="통합본 근거 확인" />
+            <span>근거 확인 (세 교과 문장의 근거와 실제 모습을 확인했습니다)</span>
+          </label>
+
           <div className="rec-row rec-wrap ev-actions">
             <button className="diag-secondary" disabled={busy || !dirty} onClick={saveNow}>
               저장
@@ -200,7 +218,7 @@ export default function CombinedPanel({ studentId, from, to, refresh, onChanged 
                 확정 풀기
               </button>
             ) : (
-              <button className="diag-primary" disabled={busy || text.trim() === '' || !check?.canConfirm} onClick={confirm}>
+              <button className="diag-primary" disabled={busy || text.trim() === '' || !check?.canConfirm || !reviewed} onClick={() => confirm()}>
                 확정
               </button>
             )}
@@ -208,6 +226,20 @@ export default function CombinedPanel({ studentId, from, to, refresh, onChanged 
               복사
             </button>
           </div>
+          {status !== 'confirmed' && <p className="diag-hint ev-review-notice" role="note">{REVIEW_NOTICE}</p>}
+          {askUnchanged && (
+            <div className="ev-ask-box" role="alertdialog" aria-label="그대로 확정할까요">
+              <p>{UNCHANGED_NOTICE}</p>
+              <div className="rec-row rec-wrap">
+                <button className="diag-primary" disabled={busy} onClick={() => confirm(true)}>
+                  그대로 확정
+                </button>
+                <button className="diag-secondary" onClick={() => setAskUnchanged(false)}>
+                  돌아가서 고치기
+                </button>
+              </div>
+            </div>
+          )}
           {status !== 'confirmed' && <p className="diag-hint">확정한 통합본만 복사·내보내기를 할 수 있습니다.</p>}
         </>
       )}

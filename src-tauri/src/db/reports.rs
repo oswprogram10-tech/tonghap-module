@@ -46,6 +46,8 @@ pub struct ReportObservation {
     pub standard_codes: Vec<String>,
     pub tags: Vec<String>,
     pub others_count: usize,
+    /// 「지도가 필요한 모습」 표시. 리포트에는 기본으로 넣지 않는다(선생님이 직접 고를 수는 있다).
+    pub needs_guidance: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -248,6 +250,7 @@ fn candidate(o: &observations::Observation, student_id: &str, sc: &Scrubber) -> 
             standard_codes: o.standard_codes.clone(),
             tags: o.tags.iter().map(|t| sc.scrub(t)).collect(),
             others_count,
+            needs_guidance: o.needs_guidance,
         },
         solo_for_student: others_count == 0,
         photos,
@@ -287,8 +290,10 @@ fn lessons(conn: &Connection, class_id: &str, topic: Option<&str>, from: &str, t
 }
 
 /// 기본 선택: 메모 있는 관찰 중 성취기준이 붙은 것 우선, 그다음 최신 4개 / 단독 관찰의 사진 최신 4장.
+/// 「지도가 필요한 모습」 기록은 학부모에게 보내는 글이므로 기본으로 넣지 않는다.
 fn default_selection(cands: &[Candidate]) -> (Vec<String>, Vec<String>) {
-    let mut with_note: Vec<&Candidate> = cands.iter().filter(|c| !c.observation.note.trim().is_empty()).collect();
+    let cands: Vec<&Candidate> = cands.iter().filter(|c| !c.observation.needs_guidance).collect();
+    let mut with_note: Vec<&Candidate> = cands.iter().copied().filter(|c| !c.observation.note.trim().is_empty()).collect();
     // 후보는 이미 최신순이고 이 정렬은 안정적이다.
     with_note.sort_by_key(|c| c.observation.standard_codes.is_empty());
     let mut chosen: Vec<&Candidate> = with_note.into_iter().take(MAX_OBSERVATIONS).collect();
@@ -594,6 +599,7 @@ mod tests {
             standard_codes: codes.iter().map(|c| c.to_string()).collect(),
             tags: vec!["협력".into()],
             unit_session_id: None,
+            needs_guidance: false,
         };
         create(&mut cx.conn, &cx.media, &input).unwrap()
     }
@@ -646,6 +652,48 @@ mod tests {
         let g = d.candidates.iter().find(|c| c.observation.id == group.id).unwrap();
         assert!(!g.solo_for_student);
         assert_eq!((g.observation.others_count, g.photos.len()), (1, 1), "후보로는 보이고 교사가 켤 수 있다");
+    }
+
+    #[test]
+    fn needs_guidance_observations_are_left_out_of_the_default_report_but_can_be_picked() {
+        let mut cx = seed();
+        let a = obs(&mut cx, &[0], "2027-03-02", "블록을 함께 정리함", &[]);
+        let input = ObservationInput {
+            class_id: cx.class.clone(),
+            observed_at: "2027-03-09T10:00:00+09:00".into(),
+            topic_book_id: Some("g1s1-school".into()),
+            note: "차례를 지키지 않고 끼어듦".into(),
+            student_ids: vec![cx.ids[0].clone()],
+            standard_codes: vec![],
+            tags: vec!["책임".into()],
+            unit_session_id: None,
+            needs_guidance: true,
+        };
+        let g = create(&mut cx.conn, &cx.media, &input).unwrap();
+        assert!(g.needs_guidance);
+        let gp = photo(&cx, &g.id);
+        let d = draft_of(&cx, 0);
+        assert_eq!(d.observation_ids, std::slice::from_ref(&a.id), "기본 선택에서 빠진다");
+        assert!(!d.attachment_ids.contains(&gp), "그 기록의 사진도 기본에서 빠진다");
+        let c = d.candidates.iter().find(|c| c.observation.id == g.id).unwrap();
+        assert!(c.observation.needs_guidance, "후보 목록에는 표시와 함께 남는다");
+        // 선생님이 직접 고르면 저장할 수 있다.
+        let saved = save(
+            &cx.conn,
+            &cx.media,
+            &ReportInput {
+                student_id: cx.ids[0].clone(),
+                topic_book_id: Some("g1s1-school".into()),
+                from: FROM.into(),
+                to: TO.into(),
+                message: String::new(),
+                observation_ids: vec![a.id.clone(), g.id.clone()],
+                attachment_ids: vec![],
+                quote_attachment_ids: vec![],
+            },
+        )
+        .unwrap();
+        assert_eq!(saved.observation_ids.len(), 2);
     }
 
     #[test]

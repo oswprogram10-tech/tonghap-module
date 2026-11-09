@@ -136,6 +136,7 @@ function RecordPanel({ ctx, onGoBackup }: { ctx: RecordsCtx; onGoBackup: () => v
               <span className="rec-card-meta">
                 {o.topicBookId && <span className="rec-tag">{topicTitle(o.topicBookId)}</span>}
                 {o.unitSessionTitle && <span className="rec-tag rec-tag-session">차시: {o.unitSessionTitle}</span>}
+                {o.needsGuidance && <span className="rec-tag rec-tag-guidance">지도가 필요한 모습</span>}
                 {o.tags.map((t) => (
                   <span key={t} className="rec-tag rec-tag-activity">
                     {t}

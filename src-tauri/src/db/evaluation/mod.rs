@@ -4,6 +4,8 @@
 //! 원칙: 근거 없는 문장은 확정할 수 없고, 다른 학생 이름은 근거 묶음에 들어가지 않으며,
 //! 아이 데이터는 PC 밖으로 나가지 않는다(이 모듈에는 네트워크 요청이 없다).
 
+pub mod behavior;
+pub mod behavior_llm;
 pub mod bundle;
 pub mod check;
 pub mod combined;
@@ -23,7 +25,7 @@ use tauri::State;
 use self::bundle::{Bundle, MIN_EVIDENCE};
 use self::check::{check_draft, DraftCheck, LEN_MAX, LEN_MIN};
 use self::data::{check_subject, forbidden, SUBJECTS};
-use self::generate::{generate, Sentence, Style};
+use self::generate::{generate, joined_text, Sentence, Style};
 use super::reports::{check_period, Scrubber};
 use super::{classes, lock, new_id, now_iso, settings, students, DbExt, DbResult, MediaDir};
 
@@ -96,6 +98,8 @@ pub struct StoredDraft {
     pub generator: String,
     pub confirmed_at: Option<String>,
     pub updated_at: String,
+    /// 언어 모델이 만든 글을 한 글자도 고치지 않았다(확정 전에 화면이 한 번 더 묻는다).
+    pub unchanged_from_model: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -126,7 +130,7 @@ pub struct SaveInput {
 }
 
 /// 정규화된 (학생 id, 교과, 시작, 끝).
-struct Key {
+pub(crate) struct Key {
     student_id: String,
     subject: &'static str,
     from: String,
@@ -139,23 +143,35 @@ fn norm(key: &DraftKey) -> DbResult<Key> {
     Ok(Key { student_id: key.student_id.clone(), subject, from, to })
 }
 
-fn row_to_draft(r: &rusqlite::Row<'_>) -> rusqlite::Result<(String, String, String, String, Option<String>, String)> {
-    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+type DraftRow = (String, String, String, String, Option<String>, String, Option<String>);
+
+fn row_to_draft(r: &rusqlite::Row<'_>) -> rusqlite::Result<DraftRow> {
+    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?))
 }
 
-fn load_draft(conn: &Connection, k: &Key) -> DbResult<Option<StoredDraft>> {
+/// 언어 모델이 만든 글(`generated_text`)과 지금 글이 같은가.
+pub(crate) fn is_unchanged_from_model(generator: &str, generated_text: Option<&str>, current: &str) -> bool {
+    generator.starts_with("llm:") && generated_text.is_some_and(|g| !g.is_empty() && g == current)
+}
+
+pub(crate) fn load_draft(conn: &Connection, k: &Key) -> DbResult<Option<StoredDraft>> {
     let row = conn
         .query_row(
-            "SELECT id, sentences, status, generator, confirmed_at, updated_at FROM evaluation_drafts
+            "SELECT id, sentences, status, generator, confirmed_at, updated_at, generated_text FROM evaluation_drafts
              WHERE student_id = ?1 AND subject = ?2 AND period_from = ?3 AND period_to = ?4",
             params![k.student_id, k.subject, k.from, k.to],
             row_to_draft,
         )
         .optional()
         .db()?;
-    row.map(|(id, sentences, status, generator, confirmed_at, updated_at)| {
-        let sentences = serde_json::from_str(&sentences).map_err(|e| format!("저장된 평어를 읽을 수 없습니다: {e}"))?;
-        Ok(StoredDraft { id, sentences, status, generator, confirmed_at, updated_at })
+    row.map(|(id, sentences, status, generator, confirmed_at, updated_at, generated)| {
+        let mut sentences: Vec<Sentence> = serde_json::from_str(&sentences).map_err(|e| format!("저장된 평어를 읽을 수 없습니다: {e}"))?;
+        // 확정된 초안의 문장은 모두 확인된 것이다(마이그레이션 11 전의 확정본에는 `reviewed`가 없다).
+        if status == "confirmed" {
+            sentences.iter_mut().for_each(|s| s.reviewed = true);
+        }
+        let unchanged_from_model = is_unchanged_from_model(&generator, generated.as_deref(), &joined_text(&sentences));
+        Ok(StoredDraft { id, sentences, status, generator, confirmed_at, updated_at, unchanged_from_model })
     })
     .transpose()
 }
@@ -165,8 +181,13 @@ fn evidence_ids(sentences: &[Sentence]) -> Vec<String> {
 }
 
 fn normalize_sentences(input: &[Sentence]) -> DbResult<Vec<Sentence>> {
-    if input.len() > MAX_SENTENCES {
-        return Err(format!("문장은 {MAX_SENTENCES}개까지 쓸 수 있습니다"));
+    normalize_sentences_max(input, MAX_SENTENCES)
+}
+
+/// 문장 개수 상한을 정해 정리한다(행동특성 및 종합의견은 문장이 더 많다).
+pub(crate) fn normalize_sentences_max(input: &[Sentence], max: usize) -> DbResult<Vec<Sentence>> {
+    if input.len() > max {
+        return Err(format!("문장은 {max}개까지 쓸 수 있습니다"));
     }
     let mut out = Vec::new();
     for (i, s) in input.iter().enumerate() {
@@ -186,7 +207,7 @@ fn normalize_sentences(input: &[Sentence]) -> DbResult<Vec<Sentence>> {
                 evidence.push(id.to_string());
             }
         }
-        out.push(Sentence { text, evidence });
+        out.push(Sentence { text, evidence, reviewed: s.reviewed });
     }
     Ok(out)
 }
@@ -195,14 +216,17 @@ fn write_draft(conn: &Connection, student_id: &str, k: &Key, sentences: &[Senten
     let student = students::get(conn, student_id)?;
     let json = serde_json::to_string(sentences).expect("JSON");
     let now = now_iso();
+    // 언어 모델이 만든 글은 그대로 보관해 두었다가, 선생님이 한 글자도 고치지 않고 확정하려 할 때 알려 준다.
+    let generated = generator.starts_with("llm:").then(|| joined_text(sentences));
     // 고치거나 새로 만들면 항상 초안으로 돌아간다(확정은 다시 눌러야 한다).
     conn.execute(
-        "INSERT INTO evaluation_drafts (id, class_id, student_id, subject, period_from, period_to, sentences, status, generator, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'draft', ?8, ?9, ?9)
+        "INSERT INTO evaluation_drafts (id, class_id, student_id, subject, period_from, period_to, sentences, status, generator, created_at, updated_at, generated_text)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'draft', ?8, ?9, ?9, ?10)
          ON CONFLICT (student_id, subject, period_from, period_to) DO UPDATE SET
            sentences = excluded.sentences, status = 'draft', confirmed_at = NULL, updated_at = excluded.updated_at,
-           generator = CASE WHEN ?8 = 'manual' THEN generator ELSE excluded.generator END",
-        params![new_id(), student.class_id, student.id, k.subject, k.from, k.to, json, generator, now],
+           generator = CASE WHEN ?8 = 'manual' THEN generator ELSE excluded.generator END,
+           generated_text = CASE WHEN ?8 = 'manual' THEN generated_text ELSE excluded.generated_text END",
+        params![new_id(), student.class_id, student.id, k.subject, k.from, k.to, json, generator, now, generated],
     )
     .db()?;
     Ok(())
@@ -300,7 +324,7 @@ pub fn check_sentences(conn: &Connection, media: &Path, input: &SaveInput) -> Db
         .sentences
         .iter()
         .take(MAX_SENTENCES)
-        .map(|s| Sentence { text: s.text.trim().to_string(), evidence: s.evidence.clone() })
+        .map(|s| Sentence { text: s.text.trim().to_string(), evidence: s.evidence.clone(), reviewed: s.reviewed })
         .collect();
     let bundle = bundle::build(conn, media, &k.student_id, k.subject, &k.from, &k.to, &evidence_ids(&sentences))?;
     run_check(conn, &k.student_id, &sentences, &bundle)
@@ -319,6 +343,9 @@ pub fn confirm(conn: &Connection, media: &Path, key: &DraftKey) -> DbResult<Draf
         if !ok {
             return Err(format!("{}번째 문장에 근거가 없습니다. 문장마다 근거를 하나 이상 붙여야 확정할 수 있습니다", i + 1));
         }
+    }
+    if let Some(i) = draft.sentences.iter().position(|s| !s.reviewed) {
+        return Err(format!("{}번째 문장의 「근거 확인」을 체크해 주세요. AI나 템플릿이 만든 문장은 근거와 실제 모습을 확인한 뒤 확정할 수 있습니다", i + 1));
     }
     conn.execute("UPDATE evaluation_drafts SET status = 'confirmed', confirmed_at = ?2 WHERE id = ?1", params![draft.id, now_iso()]).db()?;
     view(conn, media, key)
@@ -469,7 +496,8 @@ pub fn export_by_format(conn: &Connection, class_id: &str, from: &str, to: &str,
     match format.unwrap_or("combined") {
         "combined" => combined::export_text(conn, class_id, from, to),
         "bySubject" => export_text(conn, class_id, from, to),
-        _ => Err("내보내기 형식은 통합본 또는 교과별 중에서 골라 주세요".to_string()),
+        "behavior" => behavior::export_text(conn, class_id, from, to),
+        _ => Err("내보내기 형식은 통합본, 교과별, 행동특성 중에서 골라 주세요".to_string()),
     }
 }
 
@@ -489,8 +517,8 @@ pub fn eval_combine(db: State<Mutex<Connection>>, input: combined::CombineInput)
 }
 
 #[tauri::command]
-pub fn eval_combined_save(db: State<Mutex<Connection>>, id: String, text: String) -> DbResult<combined::CombinedView> {
-    combined::save(&*lock(&db)?, &id, &text)
+pub fn eval_combined_save(db: State<Mutex<Connection>>, id: String, text: String, reviewed: Option<bool>) -> DbResult<combined::CombinedView> {
+    combined::save(&*lock(&db)?, &id, &text, reviewed)
 }
 
 #[tauri::command]
@@ -508,5 +536,44 @@ pub fn eval_combined_unconfirm(db: State<Mutex<Connection>>, id: String) -> DbRe
     combined::unconfirm(&*lock(&db)?, &id)
 }
 
+// ---------- 행동특성 및 종합의견 명령 ----------
+
+#[tauri::command]
+pub fn eval_behavior_view(db: State<Mutex<Connection>>, media: State<MediaDir>, key: behavior::OpinionKey) -> DbResult<behavior::BehaviorView> {
+    behavior::view(&*lock(&db)?, &media.0, &key)
+}
+
+#[tauri::command]
+pub fn eval_behavior_status(db: State<Mutex<Connection>>, media: State<MediaDir>, class_id: String, from: String, to: String) -> DbResult<Vec<StudentRow>> {
+    behavior::class_status(&*lock(&db)?, &media.0, &class_id, &from, &to)
+}
+
+#[tauri::command]
+pub fn eval_behavior_generate(db: State<Mutex<Connection>>, media: State<MediaDir>, input: behavior::GenerateInput) -> DbResult<behavior::BehaviorView> {
+    behavior::generate_draft(&*lock(&db)?, &media.0, &input)
+}
+
+#[tauri::command]
+pub fn eval_behavior_save(db: State<Mutex<Connection>>, media: State<MediaDir>, input: behavior::SaveInput) -> DbResult<behavior::BehaviorView> {
+    behavior::save_draft(&*lock(&db)?, &media.0, &input)
+}
+
+#[tauri::command]
+pub fn eval_behavior_check(db: State<Mutex<Connection>>, media: State<MediaDir>, input: behavior::SaveInput) -> DbResult<behavior::BehaviorCheck> {
+    behavior::check_sentences(&*lock(&db)?, &media.0, &input)
+}
+
+#[tauri::command]
+pub fn eval_behavior_confirm(db: State<Mutex<Connection>>, media: State<MediaDir>, key: behavior::OpinionKey) -> DbResult<behavior::BehaviorView> {
+    behavior::confirm(&*lock(&db)?, &media.0, &key)
+}
+
+#[tauri::command]
+pub fn eval_behavior_target_set(db: State<Mutex<Connection>>, target_chars: usize) -> DbResult<usize> {
+    behavior::save_target(&*lock(&db)?, target_chars)
+}
+
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod behavior_tests;

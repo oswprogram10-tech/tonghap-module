@@ -8,6 +8,8 @@ import {
   LEN_MAX,
   LEN_MIN,
   MIN_EVIDENCE,
+  REVIEW_NOTICE,
+  UNCHANGED_NOTICE,
   evalApi,
   generatorLabel,
   joinSentences,
@@ -23,13 +25,13 @@ import {
 
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 
-function evidenceLabel(e: Evidence): string {
+export function evidenceLabel(e: Evidence): string {
   if (e.kind === 'observation') return `${md(e.date)} ${shorten(e.text || e.quote || '(메모 없음)', 14)}`;
   if (e.kind === 'habit') return `습관 ${shorten(e.title, 12)}`;
   return `${md(e.date)} 차시 ${shorten(e.title, 12)}`;
 }
 
-const KIND_LABEL = { observation: '관찰', habit: '습관', session: '차시' } as const;
+export const KIND_LABEL = { observation: '관찰', habit: '습관', session: '차시' } as const;
 
 interface Props {
   studentId: string;
@@ -54,6 +56,8 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [askRegen, setAskRegen] = useState(false);
+  const [askUnchanged, setAskUnchanged] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState<number | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,9 +155,19 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
       onChanged();
     });
 
-  const confirm = () =>
+  /** 확정. 언어 모델이 만든 글을 한 글자도 고치지 않았으면 먼저 한 번 더 묻는다(막지는 않는다). */
+  const confirm = (skipAsk = false) =>
     run(async () => {
-      if (dirty) await evalApi.save(key, sentences);
+      setAskUnchanged(false);
+      let v = view;
+      if (dirty) {
+        v = await evalApi.save(key, sentences);
+        apply(v);
+      }
+      if (!skipAsk && v?.draft?.unchangedFromModel) {
+        setAskUnchanged(true);
+        return;
+      }
       apply(await evalApi.confirm(key));
       setInfo('확정했습니다. 이제 복사할 수 있어요.');
       onChanged();
@@ -175,7 +189,11 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
   const setText = (i: number, text: string) => setSentences((s) => s.map((x, j) => (j === i ? { ...x, text } : x)));
   const detach = (i: number, id: string) => setSentences((s) => s.map((x, j) => (j === i ? { ...x, evidence: x.evidence.filter((e) => e !== id) } : x)));
   const attach = (i: number, id: string) => id && setSentences((s) => s.map((x, j) => (j === i && !x.evidence.includes(id) ? { ...x, evidence: [...x.evidence, id] } : x)));
-  const removeSentence = (i: number) => setSentences((s) => s.filter((_, j) => j !== i));
+  const removeSentence = (i: number) => {
+    setReviewOpen(null);
+    setSentences((s) => s.filter((_, j) => j !== i));
+  };
+  const toggleReviewed = (i: number) => setSentences((s) => s.map((x, j) => (j === i ? { ...x, reviewed: !x.reviewed } : x)));
   const toggleExcluded = (id: string) => setExcluded((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
 
   if (error && !view) return <p className="diag-error">{error}</p>;
@@ -184,6 +202,7 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
   const status = view.draft?.status ?? 'none';
   const byId = new Map(view.bundle.evidence.map((e) => [e.id, e]));
   const total = check?.totalChars ?? 0;
+  const allReviewed = sentences.length > 0 && sentences.every((s) => s.reviewed);
 
   return (
     <section className="ev-student" aria-label={`${view.student.number}번 ${view.student.name} 평어`}>
@@ -302,6 +321,24 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
                       문장 지우기
                     </button>
                   </div>
+                  <div className="rec-row rec-wrap ev-review-row">
+                    <label className={s.reviewed ? 'ev-review on' : 'ev-review'}>
+                      <input type="checkbox" checked={s.reviewed} onChange={() => toggleReviewed(i)} aria-label={`${i + 1}번째 문장 근거 확인`} />
+                      <span>근거 확인</span>
+                    </label>
+                    <button className="diag-secondary" aria-expanded={reviewOpen === i} onClick={() => setReviewOpen(reviewOpen === i ? null : i)}>
+                      {reviewOpen === i ? '근거 기록 접기' : '근거 기록 펼쳐 보기'}
+                    </button>
+                  </div>
+                  {reviewOpen === i && (
+                    <div className="ev-review-detail">
+                      {s.evidence.length === 0 && <p className="diag-hint">이 문장에는 근거 기록이 없습니다.</p>}
+                      {s.evidence.map((id) => {
+                        const e = byId.get(id);
+                        return e ? <EvidenceDetail key={id} e={e} bundle={view.bundle.standardsText} /> : null;
+                      })}
+                    </div>
+                  )}
                   {warns.length > 0 && (
                     <ul className="ev-warns">
                       {warns.map((w, k) => (
@@ -315,7 +352,7 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
               );
             })}
           </ol>
-          <button className="diag-secondary" onClick={() => setSentences((s) => [...s, { text: '', evidence: [] }])} disabled={sentences.length >= 12}>
+          <button className="diag-secondary" onClick={() => setSentences((s) => [...s, { text: '', evidence: [], reviewed: true }])} disabled={sentences.length >= 12}>
             문장 추가
           </button>
 
@@ -338,7 +375,7 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
                 확정 풀기
               </button>
             ) : (
-              <button className="diag-primary" disabled={busy || sentences.length === 0 || !check?.canConfirm} onClick={confirm}>
+              <button className="diag-primary" disabled={busy || sentences.length === 0 || !check?.canConfirm || !allReviewed} onClick={() => confirm()}>
                 확정
               </button>
             )}
@@ -347,6 +384,25 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
             </button>
           </div>
           <p className="diag-hint">NEIS에는 통합본을 붙여 넣습니다(아래 「통합본」). 이 교과만 복사는 참고용입니다.</p>
+          {status !== 'confirmed' && (
+            <p className="diag-hint ev-review-notice" role="note">
+              {REVIEW_NOTICE}
+              {sentences.length > 0 && !allReviewed && ` (「근거 확인」을 누르지 않은 문장 ${sentences.filter((s) => !s.reviewed).length}개)`}
+            </p>
+          )}
+          {askUnchanged && (
+            <div className="ev-ask-box" role="alertdialog" aria-label="그대로 확정할까요">
+              <p>{UNCHANGED_NOTICE}</p>
+              <div className="rec-row rec-wrap">
+                <button className="diag-primary" disabled={busy} onClick={() => confirm(true)}>
+                  그대로 확정
+                </button>
+                <button className="diag-secondary" onClick={() => setAskUnchanged(false)}>
+                  돌아가서 고치기
+                </button>
+              </div>
+            </div>
+          )}
           {status !== 'confirmed' && <p className="diag-hint">확정한 평어만 복사·내보내기를 할 수 있습니다.</p>}
         </div>
       </div>
@@ -354,7 +410,7 @@ export default function StudentDraft({ studentId, subject, from, to, settings, g
   );
 }
 
-function EvidenceDetail({ e, bundle }: { e: Evidence; bundle: Record<string, string> }) {
+export function EvidenceDetail({ e, bundle }: { e: Evidence; bundle: Record<string, string> }) {
   const stds = e.kind === 'habit' ? [] : e.standards;
   return (
     <div className="ev-detail">
@@ -367,6 +423,7 @@ function EvidenceDetail({ e, bundle }: { e: Evidence; bundle: Record<string, str
           {e.text && <p className="ev-quote-text">{e.text}</p>}
           {e.quote && <p className="ev-quote-text">음성 메모 자막: “{e.quote}”</p>}
           {e.tags.length > 0 && <p>태그: {e.tags.join(', ')}</p>}
+          {e.negative && <p className="rec-tag rec-tag-guidance">지도가 필요한 모습</p>}
         </>
       )}
       {e.kind === 'habit' && (

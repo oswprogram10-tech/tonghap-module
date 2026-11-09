@@ -212,6 +212,8 @@ fn synthetic_bundle() -> Bundle {
         text: text.into(),
         quote: quote.map(String::from),
         together: false,
+        negative: false,
+        pair: None,
     };
     Bundle {
         student: BundleStudent { alias: "학생".into() },

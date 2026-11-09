@@ -1,0 +1,252 @@
+{
+  "$schema": "./schema/behavior-templates.schema.json",
+  "dataVersion": "0.1.0",
+  "note": "행동특성 및 종합의견 템플릿 생성기의 문장 틀(설계 24). {E}는 교사가 고른 문체의 종결로 바뀐다. 모든 틀은 근거 메모 {note}를 쓴다. strength=장점, growth=지도가 필요한 모습 뒤에 긍정 기록이 이어진 짝(성장·변화, {before}는 앞선 기록), concern=지도가 필요한 모습(반드시 변화 가능성 표현을 포함하고 고정 종결로 끝난다).",
+  "tagGroups": {
+    "배려": "care",
+    "존중": "care",
+    "협력": "cooperate",
+    "책임": "responsible",
+    "습관": "practice",
+    "실천": "practice",
+    "안전": "safety",
+    "성장": "growth"
+  },
+  "changeWords": [
+    "노력",
+    "점차",
+    "나아지",
+    "나아질",
+    "나아갈",
+    "성장",
+    "기대",
+    "꾸준히",
+    "연습",
+    "변화",
+    "달라지",
+    "개선",
+    "익혀"
+  ],
+  "semesterLabels": [
+    "(1학기)",
+    "(2학기)"
+  ],
+  "templates": [
+    {
+      "id": "bh-strength-care-1",
+      "kind": "strength",
+      "group": "care",
+      "text": "{note} 경험을 통해 친구의 마음을 헤아리며 배려{E}"
+    },
+    {
+      "id": "bh-strength-care-2",
+      "kind": "strength",
+      "group": "care",
+      "text": "{note} 일을 계기로 친구를 존중하는 태도를 기르려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-care-3",
+      "kind": "strength",
+      "group": "care",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 친구의 의견을 존중하며 함께 활동{E}"
+    },
+    {
+      "id": "bh-strength-care-4",
+      "kind": "strength",
+      "group": "care",
+      "text": "{note} 경험을 통해 서로 다른 생각을 가진 친구를 이해하려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-cooperate-1",
+      "kind": "strength",
+      "group": "cooperate",
+      "text": "{note} 경험을 통해 친구와 역할을 나누어 함께 해결하려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-cooperate-2",
+      "kind": "strength",
+      "group": "cooperate",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 친구와 협력하는 방법을 익히려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-cooperate-3",
+      "kind": "strength",
+      "group": "cooperate",
+      "text": "{note} 일을 계기로 친구와 힘을 모으는 즐거움을 느끼며 활동에 참여{E}"
+    },
+    {
+      "id": "bh-strength-cooperate-4",
+      "kind": "strength",
+      "group": "cooperate",
+      "text": "{note} 경험을 통해 친구의 도움을 받고 또 도우며 함께 성장{E}"
+    },
+    {
+      "id": "bh-strength-responsible-1",
+      "kind": "strength",
+      "group": "responsible",
+      "text": "{note} 경험을 통해 맡은 일을 끝까지 해내려는 책임감을 보이며 실천{E}"
+    },
+    {
+      "id": "bh-strength-responsible-2",
+      "kind": "strength",
+      "group": "responsible",
+      "text": "{note} 경험을 바탕으로 자신이 맡은 역할을 책임 있게 수행{E}"
+    },
+    {
+      "id": "bh-strength-responsible-3",
+      "kind": "strength",
+      "group": "responsible",
+      "text": "{topic} 활동에서 {note} 경험을 통해 약속과 규칙을 스스로 지키려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-responsible-4",
+      "kind": "strength",
+      "group": "responsible",
+      "text": "{note} 일을 통해 자신의 행동에 책임을 지는 태도를 기르려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-practice-1",
+      "kind": "strength",
+      "group": "practice",
+      "text": "{note} 경험을 통해 바른 생활 습관을 몸에 익히려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-practice-2",
+      "kind": "strength",
+      "group": "practice",
+      "text": "{note} 경험을 바탕으로 배운 내용을 생활 속에서 꾸준히 실천{E}"
+    },
+    {
+      "id": "bh-strength-practice-3",
+      "kind": "strength",
+      "group": "practice",
+      "text": "{topic} 활동에서 {note} 경험을 통해 좋은 습관을 스스로 이어 가려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-practice-4",
+      "kind": "strength",
+      "group": "practice",
+      "text": "{note} 일을 계기로 알게 된 규칙을 일상에서 지키며 생활{E}"
+    },
+    {
+      "id": "bh-strength-safety-1",
+      "kind": "strength",
+      "group": "safety",
+      "text": "{note} 경험을 통해 안전 수칙을 지키며 생활{E}"
+    },
+    {
+      "id": "bh-strength-safety-2",
+      "kind": "strength",
+      "group": "safety",
+      "text": "{note} 경험을 바탕으로 위험한 상황을 스스로 살피고 조심하려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-safety-3",
+      "kind": "strength",
+      "group": "safety",
+      "text": "{topic} 활동에서 {note} 경험을 통해 자신과 친구의 안전을 함께 생각하며 행동{E}"
+    },
+    {
+      "id": "bh-strength-safety-4",
+      "kind": "strength",
+      "group": "safety",
+      "text": "{note} 일을 계기로 안전하게 생활하는 방법을 익히려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-growth-1",
+      "kind": "strength",
+      "group": "growth",
+      "text": "{note} 경험을 통해 스스로 한 단계 성장하려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-growth-2",
+      "kind": "strength",
+      "group": "growth",
+      "text": "{note} 경험을 바탕으로 자신의 생각과 행동을 되돌아보며 성장{E}"
+    },
+    {
+      "id": "bh-strength-growth-3",
+      "kind": "strength",
+      "group": "growth",
+      "text": "{topic} 활동에서 {note} 경험을 통해 새로운 것에 도전하려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-growth-4",
+      "kind": "strength",
+      "group": "growth",
+      "text": "{note} 과정을 거치며 꾸준히 발전해 가려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-general-1",
+      "kind": "strength",
+      "group": "general",
+      "text": "{note} 경험을 통해 학교 생활에 즐겁게 참여{E}"
+    },
+    {
+      "id": "bh-strength-general-2",
+      "kind": "strength",
+      "group": "general",
+      "text": "{topic} 활동에서 {note} 경험을 바탕으로 자신의 생각을 표현하려고 노력{E}"
+    },
+    {
+      "id": "bh-strength-general-3",
+      "kind": "strength",
+      "group": "general",
+      "text": "{note} 경험을 통해 친구들과 어울리며 학교 생활에 적응{E}"
+    },
+    {
+      "id": "bh-strength-general-4",
+      "kind": "strength",
+      "group": "general",
+      "text": "{note} 일을 계기로 자신의 생활을 스스로 이끌어 가려고 노력{E}"
+    },
+    {
+      "id": "bh-growth-general-1",
+      "kind": "growth",
+      "group": "general",
+      "text": "{before} 때가 있었으나 {note} 경험을 거치며 스스로 달라지려고 노력{E}"
+    },
+    {
+      "id": "bh-growth-general-2",
+      "kind": "growth",
+      "group": "general",
+      "text": "{before} 때가 있었으나 {note} 경험을 통해 점차 나아지는 변화를 보이며 성장{E}"
+    },
+    {
+      "id": "bh-growth-general-3",
+      "kind": "growth",
+      "group": "general",
+      "text": "{before} 일이 있었으나 이후 {note} 경험을 쌓으며 점차 개선{E}"
+    },
+    {
+      "id": "bh-growth-general-4",
+      "kind": "growth",
+      "group": "general",
+      "text": "처음에는 {before} 때가 있었으나 {note} 경험을 통해 꾸준히 노력하며 성장{E}"
+    },
+    {
+      "id": "bh-concern-general-1",
+      "kind": "concern",
+      "group": "general",
+      "text": "{note} 때가 있으나 이를 꾸준히 연습한다면 점차 나아질 것으로 기대됨"
+    },
+    {
+      "id": "bh-concern-general-2",
+      "kind": "concern",
+      "group": "general",
+      "text": "{note} 때가 있어 앞으로 차분히 연습해 간다면 성장할 것으로 기대됨"
+    },
+    {
+      "id": "bh-concern-general-3",
+      "kind": "concern",
+      "group": "general",
+      "text": "{note} 때가 있었으나 계속 연습하고 노력해 간다면 충분히 나아질 수 있음"
+    },
+    {
+      "id": "bh-concern-general-4",
+      "kind": "concern",
+      "group": "general",
+      "text": "{note} 때가 있으나 하나씩 익혀 가며 꾸준히 노력한다면 변화할 수 있을 것으로 기대됨"
+    }
+  ]
+}

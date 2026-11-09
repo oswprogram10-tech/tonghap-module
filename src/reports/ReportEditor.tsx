@@ -193,6 +193,7 @@ export default function ReportEditor({ cls, student, topicId, onClose }: { cls: 
                     <span className="rp-pick-text">
                       <strong>{formatDate(o.observedAt)}</strong> {shorten(o.note, 60) || <em>메모 없음</em>}
                       {o.othersCount > 0 && <span className="rec-tag"> 친구 {o.othersCount}명과 함께 기록</span>}
+                      {o.needsGuidance && <span className="rec-tag rec-tag-guidance" title="학부모 리포트에는 기본으로 넣지 않습니다"> 지도가 필요한 모습</span>}
                     </span>
                   </label>
                 );

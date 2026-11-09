@@ -10,24 +10,24 @@ use super::*;
 use crate::db::observations::{create, ObservationInput};
 use crate::db::{attachments, observations, test_conn};
 
-const FROM: &str = "2027-03-02";
-const TO: &str = "2027-07-18";
+pub(super) const FROM: &str = "2027-03-02";
+pub(super) const TO: &str = "2027-07-18";
 
-struct Cx {
-    conn: Connection,
-    media: PathBuf,
-    class: String,
+pub(super) struct Cx {
+    pub(super) conn: Connection,
+    pub(super) media: PathBuf,
+    pub(super) class: String,
     /// 김하늘, 박서준, 이지우
-    ids: Vec<String>,
+    pub(super) ids: Vec<String>,
 }
 
-fn tmp(name: &str) -> PathBuf {
+pub(super) fn tmp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("tonghap-eval-{}-{}", name, new_id()));
     std::fs::create_dir_all(&d).unwrap();
     d
 }
 
-fn seed() -> Cx {
+pub(super) fn seed() -> Cx {
     let mut conn = test_conn();
     let c = classes::create(&conn, 2027, 1, "1반").unwrap();
     students::import(&mut conn, &c.id, "1 김하늘\n2 박서준\n3 이지우").unwrap();
@@ -40,7 +40,7 @@ fn key(cx: &Cx, i: usize, subject: &str) -> DraftKey {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn obs_full(cx: &mut Cx, students: &[usize], day: &str, topic: &str, note: &str, codes: &[&str], tags: &[&str]) -> observations::Observation {
+pub(super) fn obs_full(cx: &mut Cx, students: &[usize], day: &str, topic: &str, note: &str, codes: &[&str], tags: &[&str]) -> observations::Observation {
     let input = ObservationInput {
         class_id: cx.class.clone(),
         observed_at: format!("{day}T10:00:00+09:00"),
@@ -50,6 +50,7 @@ fn obs_full(cx: &mut Cx, students: &[usize], day: &str, topic: &str, note: &str,
         standard_codes: codes.iter().map(|c| c.to_string()).collect(),
         tags: tags.iter().map(|t| t.to_string()).collect(),
         unit_session_id: None,
+        needs_guidance: false,
     };
     create(&mut cx.conn, &cx.media, &input).unwrap()
 }
@@ -73,8 +74,15 @@ fn bundle_of(cx: &Cx, i: usize, subject: &str) -> Bundle {
     bundle::build(&cx.conn, &cx.media, &cx.ids[i], subject, FROM, TO, &[]).unwrap()
 }
 
-fn sentence(text: &str, ev: &[&str]) -> Sentence {
-    Sentence { text: text.to_string(), evidence: ev.iter().map(|e| e.to_string()).collect() }
+pub(super) fn sentence(text: &str, ev: &[&str]) -> Sentence {
+    Sentence { text: text.to_string(), evidence: ev.iter().map(|e| e.to_string()).collect(), reviewed: true }
+}
+
+/// 초안의 모든 문장에 「근거 확인」을 체크해 저장한다.
+pub(super) fn review_all(cx: &Cx, k: &DraftKey) {
+    let d = view(&cx.conn, &cx.media, k).unwrap().draft.unwrap();
+    let sentences = d.sentences.into_iter().map(|s| Sentence { reviewed: true, ..s }).collect();
+    save_draft(&cx.conn, &cx.media, &SaveInput { key: k.clone(), sentences }).unwrap();
 }
 
 fn codes_of(w: &[check::Warning]) -> Vec<&str> {
@@ -628,6 +636,7 @@ fn class_status_lists_counts_and_progress() {
     let rows = class_status(&cx.conn, &cx.media, &cx.class, "슬", FROM, TO).unwrap();
     let got: Vec<(i64, usize, &str)> = rows.iter().map(|r| (r.number, r.evidence_count, r.status.as_str())).collect();
     assert_eq!(got, [(1, 4, "draft"), (2, 1, "none"), (3, 0, "none")]);
+    review_all(&cx, &key(&cx, 0, "슬"));
     confirm(&cx.conn, &cx.media, &key(&cx, 0, "슬")).unwrap();
     assert_eq!(class_status(&cx.conn, &cx.media, &cx.class, "슬", FROM, TO).unwrap()[0].status, "confirmed");
     // 다른 교과·기간의 초안은 섞이지 않는다.
@@ -1019,6 +1028,32 @@ mod llm_tests {
     }
 
     #[test]
+    fn llm_text_left_untouched_is_flagged_until_the_teacher_edits_it() {
+        let cx = cx_with_inquiry(4);
+        let (out, _) = run_with(&cx, vec![Ok(good_output(&cx))]);
+        let d = out.unwrap().view.draft.unwrap();
+        assert!(d.unchanged_from_model);
+        assert!(d.sentences.iter().all(|s| !s.reviewed), "만든 직후에는 확인 전");
+        // 확인 표시만 하고 글은 그대로: 여전히 그대로인 글이다. 백엔드는 막지 않고 알려 준다.
+        let k = key(&cx, 0, "슬");
+        review_all(&cx, &k);
+        let v = view(&cx.conn, &cx.media, &k).unwrap();
+        assert!(v.draft.as_ref().unwrap().unchanged_from_model);
+        assert!(v.check.as_ref().unwrap().all_reviewed);
+        let confirmed = confirm(&cx.conn, &cx.media, &k).unwrap().draft.unwrap();
+        assert_eq!(confirmed.status, "confirmed");
+        assert!(confirmed.unchanged_from_model);
+        // 한 글자라도 고치면 플래그가 꺼진다. 템플릿 초안은 플래그가 없다.
+        let mut sentences = confirmed.sentences;
+        sentences[0].text.push_str(" 앞으로도 이어 가기를 기대함.");
+        let edited = save_draft(&cx.conn, &cx.media, &SaveInput { key: k.clone(), sentences }).unwrap().draft.unwrap();
+        assert!(!edited.unchanged_from_model);
+        assert_eq!(edited.generator, "llm:qwen3-4b-q4km");
+        generate_draft(&cx.conn, &cx.media, &GenerateInput { key: k.clone(), excluded_ids: vec![] }).unwrap();
+        assert!(!view(&cx.conn, &cx.media, &k).unwrap().draft.unwrap().unchanged_from_model);
+    }
+
+    #[test]
     fn think_text_retries_with_next_seed_then_succeeds() {
         let cx = cx_with_inquiry(4);
         let with_think = format!("<think>\n생각\n</think>\n{}", good_output(&cx));
@@ -1215,7 +1250,7 @@ fn combined_edits_are_not_overwritten_without_confirmation() {
     let cx = seed_all_subjects();
     confirm_all(&cx);
     let c = do_combine(&cx, false).unwrap().combined.unwrap();
-    combined::save(&cx.conn, &c.id, "선생님이 다듬은 글임.").unwrap();
+    combined::save(&cx.conn, &c.id, "선생님이 다듬은 글임.", Some(true)).unwrap();
     let err = do_combine(&cx, false).unwrap_err();
     assert!(err.contains("이미 통합본"), "{err}");
     let again = combined::view(&cx.conn, &ckey(&cx, 0)).unwrap().combined.unwrap();
@@ -1233,7 +1268,7 @@ fn reconfirming_a_subject_marks_the_combined_text_stale_but_keeps_it() {
     let cx = seed_all_subjects();
     confirm_all(&cx);
     let c = do_combine(&cx, false).unwrap().combined.unwrap();
-    combined::save(&cx.conn, &c.id, "선생님이 다듬은 글임.").unwrap();
+    combined::save(&cx.conn, &c.id, "선생님이 다듬은 글임.", Some(true)).unwrap();
     combined::confirm(&cx.conn, &c.id).unwrap();
     assert!(!combined::view(&cx.conn, &ckey(&cx, 0)).unwrap().combined.unwrap().stale);
     // 슬 평어를 고쳐 다시 확정
@@ -1265,6 +1300,9 @@ fn noun_ending_check_accepts_noun_forms_and_warns_on_other_endings() {
         "소수 3.5점을 받았음.",
         "표현함!",
         "탐구함\n표현함",
+        "분위기를 만듦.",
+        "새로운 것을 앎.",
+        "함께하는 삶.",
         "따옴표로 끝나는 말을 인용하였음.\")",
     ] {
         assert!(split_ok(ok), "통과해야 함: {ok}");
@@ -1345,7 +1383,7 @@ fn forbidden_or_other_student_name_blocks_confirm_and_unconfirmed_text_is_not_ex
     confirm_all(&cx);
     let c = do_combine(&cx, false).unwrap().combined.unwrap();
 
-    combined::save(&cx.conn, &c.id, "박서준과 함께 탐구함.").unwrap();
+    combined::save(&cx.conn, &c.id, "박서준과 함께 탐구함.", Some(true)).unwrap();
     let err = combined::confirm(&cx.conn, &c.id).unwrap_err();
     assert!(err.contains("확정할 수 없습니다"), "{err}");
     let ck = plain_check(&cx, "박서준과 함께 탐구함.");
@@ -1353,23 +1391,25 @@ fn forbidden_or_other_student_name_blocks_confirm_and_unconfirmed_text_is_not_ex
 
     let bad = forbidden().find("우리 반 1등", &[]);
     assert!(!bad.is_empty(), "테스트용 금지 표현이 기본 목록에 있어야 한다");
-    combined::save(&cx.conn, &c.id, "우리 반 1등 하였음.").unwrap();
+    combined::save(&cx.conn, &c.id, "우리 반 1등 하였음.", Some(true)).unwrap();
     assert!(combined::confirm(&cx.conn, &c.id).is_err());
     let ck = plain_check(&cx, "우리 반 1등 하였음.");
     assert!(warn_codes(&ck).contains(&FORBIDDEN) && !ck.can_confirm);
 
     // 확정 전에는 내보내기에 나오지 않는다.
     assert!(combined::export_text(&cx.conn, &cx.class, FROM, TO).unwrap_err().contains("확정된 통합본이 없습니다"));
-    combined::save(&cx.conn, &c.id, "함께 탐구함.").unwrap();
+    combined::save(&cx.conn, &c.id, "함께 탐구함.", Some(true)).unwrap();
     assert!(combined::export_text(&cx.conn, &cx.class, FROM, TO).is_err());
     let v = combined::confirm(&cx.conn, &c.id).unwrap();
     assert_eq!(v.combined.unwrap().status, "confirmed");
     assert!(combined::export_text(&cx.conn, &cx.class, FROM, TO).is_ok());
     // 고치면 다시 초안이 된다.
-    let v = combined::save(&cx.conn, &c.id, "함께 탐구하였음.").unwrap();
-    assert_eq!(v.combined.unwrap().status, "draft");
-    assert!(combined::save(&cx.conn, &c.id, "   ").is_err());
-    assert!(combined::save(&cx.conn, "없는-id", "글").unwrap_err().contains("찾을 수 없습니다"));
+    let v = combined::save(&cx.conn, &c.id, "함께 탐구하였음.", None).unwrap();
+    let after = v.combined.unwrap();
+    assert_eq!(after.status, "draft");
+    assert!(after.reviewed, "글을 고쳐도 근거 확인 체크는 유지된다");
+    assert!(combined::save(&cx.conn, &c.id, "   ", None).is_err());
+    assert!(combined::save(&cx.conn, "없는-id", "글", None).unwrap_err().contains("찾을 수 없습니다"));
     assert_eq!(combined::unconfirm(&cx.conn, &c.id).unwrap().combined.unwrap().status, "draft");
 }
 
@@ -1383,6 +1423,7 @@ fn export_has_two_formats_and_only_confirmed_rows() {
     let (by_subject, n) = export_by_format(&cx.conn, &cx.class, FROM, TO, Some("bySubject")).unwrap();
     assert_eq!(n, 3);
     assert!(by_subject.starts_with("번호\t이름\t교과\t평어\r\n"));
+    combined::save(&cx.conn, &c.id, &c.text, Some(true)).unwrap();
     combined::confirm(&cx.conn, &c.id).unwrap();
     let (text, n) = export_by_format(&cx.conn, &cx.class, FROM, TO, None).unwrap();
     assert_eq!(n, 1);
@@ -1409,4 +1450,87 @@ fn deleting_a_student_removes_the_combined_text() {
     cx.conn.execute("DELETE FROM students WHERE id = ?1", [&cx.ids[0]]).unwrap();
     let n: i64 = cx.conn.query_row("SELECT count(*) FROM evaluation_combined", [], |r| r.get(0)).unwrap();
     assert_eq!(n, 0);
+}
+
+// ---------- AI 문장 확인 장치(설계 24) ----------
+
+#[test]
+fn confirm_requires_every_sentence_to_be_reviewed_and_edits_keep_the_checks() {
+    let mut cx = seed();
+    seed_inquiry(&mut cx, 4);
+    let k = key(&cx, 0, "슬");
+    let v = generate_draft(&cx.conn, &cx.media, &GenerateInput { key: k.clone(), excluded_ids: vec![] }).unwrap();
+    let d = v.draft.unwrap();
+    assert!(d.sentences.iter().all(|s| !s.reviewed), "템플릿이 만든 문장은 확인 전");
+    assert!(!v.check.unwrap().all_reviewed);
+    let err = confirm(&cx.conn, &cx.media, &k).unwrap_err();
+    assert!(err.contains("1번째 문장의 「근거 확인」"), "{err}");
+    // 일부만 확인하면 아직 거부, 거부된 뒤에도 초안은 그대로다.
+    let mut sentences = d.sentences.clone();
+    sentences[0].reviewed = true;
+    save_draft(&cx.conn, &cx.media, &SaveInput { key: k.clone(), sentences: sentences.clone() }).unwrap();
+    let err = confirm(&cx.conn, &cx.media, &k).unwrap_err();
+    assert!(err.contains("2번째 문장의 「근거 확인」"), "{err}");
+    assert_eq!(view(&cx.conn, &cx.media, &k).unwrap().draft.unwrap().status, "draft");
+    // 확인한 문장을 고쳐 저장해도 체크는 유지된다(저장된 값이 그대로).
+    sentences[0].text.push_str(" 계속 살펴봄.");
+    let saved = save_draft(&cx.conn, &cx.media, &SaveInput { key: k.clone(), sentences }).unwrap().draft.unwrap();
+    assert!(saved.sentences[0].reviewed && !saved.sentences[1].reviewed);
+    // 새로 더한 문장은 선생님이 쓴 것이므로 체크된 채로 저장할 수 있다.
+    let mut more = saved.sentences.clone();
+    more.iter_mut().for_each(|s| s.reviewed = true);
+    let id = more[0].evidence[0].clone();
+    more.push(sentence("직접 덧붙인 문장함.", &[&id]));
+    save_draft(&cx.conn, &cx.media, &SaveInput { key: k.clone(), sentences: more }).unwrap();
+    let c = confirm(&cx.conn, &cx.media, &k).unwrap();
+    let d = c.draft.unwrap();
+    assert_eq!(d.status, "confirmed");
+    assert!(d.sentences.iter().all(|s| s.reviewed));
+    assert!(!d.unchanged_from_model, "템플릿 초안에는 언어 모델 플래그가 없다");
+}
+
+#[test]
+fn combined_confirm_needs_the_review_check_and_keeps_it_while_editing() {
+    let cx = seed_all_subjects();
+    confirm_all(&cx);
+    let c = do_combine(&cx, false).unwrap().combined.unwrap();
+    assert!(!c.reviewed && !c.unchanged_from_model);
+    let err = combined::confirm(&cx.conn, &c.id).unwrap_err();
+    assert!(err.contains("「근거 확인」"), "{err}");
+    // 고쳐 써도(체크를 건드리지 않으면) 체크 상태는 그대로다.
+    let v = combined::save(&cx.conn, &c.id, "다듬은 글임.", None).unwrap().combined.unwrap();
+    assert!(!v.reviewed);
+    let v = combined::save(&cx.conn, &c.id, "다듬은 글임.", Some(true)).unwrap().combined.unwrap();
+    assert!(v.reviewed);
+    assert_eq!(combined::confirm(&cx.conn, &c.id).unwrap().combined.unwrap().status, "confirmed");
+    // 다시 합치면 체크가 풀린다.
+    let again = do_combine(&cx, true).unwrap().combined.unwrap();
+    assert!(!again.reviewed);
+    // 템플릿 평어만 합친 글은 「언어 모델이 그대로」가 아니다.
+    assert!(!again.unchanged_from_model);
+}
+
+#[test]
+fn migration_11_treats_existing_confirmed_drafts_as_reviewed() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+    crate::db::migrations::apply_up_to(&conn, 10).unwrap();
+    let c = classes::create(&conn, 2027, 1, "1반").unwrap();
+    students::import(&mut conn, &c.id, "1 김하늘").unwrap();
+    let sid = students::list(&conn, &c.id, true).unwrap()[0].id.clone();
+    let insert = |id: &str, subject: &str, status: &str| {
+        conn.execute(
+            "INSERT INTO evaluation_drafts (id, class_id, student_id, subject, period_from, period_to, sentences, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, '[{\"text\":\"관찰함.\",\"evidence\":[\"o:x\"]}]', ?7, 't', 't')",
+            params![id, c.id, sid, subject, FROM, TO, status],
+        )
+        .unwrap();
+    };
+    insert("a", "슬", "confirmed");
+    insert("b", "바", "draft");
+    crate::db::migrations::apply(&conn).unwrap();
+    let load = |subject: &'static str| load_draft(&conn, &Key { student_id: sid.clone(), subject, from: FROM.to_string(), to: TO.to_string() }).unwrap().unwrap();
+    assert!(load("슬").sentences.iter().all(|s| s.reviewed), "기존 확정본은 확인된 것으로 본다");
+    assert!(load("바").sentences.iter().all(|s| !s.reviewed), "초안은 확인 전");
+    assert!(!load("슬").unchanged_from_model);
 }

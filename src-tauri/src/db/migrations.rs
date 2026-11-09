@@ -260,6 +260,34 @@ CREATE TABLE embeddings (
   PRIMARY KEY (kind, ref_id, model)
 );
 "#,
+    // 11: 행동특성 및 종합의견(설계 24). 관찰의 「지도가 필요한 모습」 표시, AI 문장 확인 장치(통합본·초안의 만든 글 보관).
+    // 평어 초안의 문장별 `reviewed`는 문장 JSON 안에 저장한다. 이 마이그레이션 전의 확정본에는 그 값이 없으므로
+    // 읽을 때 「확정된 초안의 문장은 모두 확인된 것」으로 본다(evaluation::load_draft).
+    r#"
+ALTER TABLE observations ADD COLUMN needs_guidance INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE evaluation_drafts ADD COLUMN generated_text TEXT;
+ALTER TABLE evaluation_combined ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE evaluation_combined ADD COLUMN generated_text TEXT;
+UPDATE evaluation_combined SET reviewed = 1 WHERE status = 'confirmed';
+
+CREATE TABLE behavior_opinions (
+  id TEXT PRIMARY KEY,
+  class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  student_id TEXT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  period_from TEXT NOT NULL,
+  period_to TEXT NOT NULL,
+  split_semesters INTEGER NOT NULL DEFAULT 0,
+  sentences TEXT NOT NULL DEFAULT '[]',
+  generator TEXT NOT NULL DEFAULT 'template',
+  generated_text TEXT,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'confirmed')),
+  confirmed_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (student_id, period_from, period_to)
+);
+CREATE INDEX idx_behavior_opinions_class ON behavior_opinions(class_id);
+"#,
 ];
 
 pub fn latest_version() -> i64 {
@@ -296,11 +324,11 @@ mod tests {
         apply(&conn).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(v, latest_version());
-        assert_eq!(v, 10);
+        assert_eq!(v, 11);
         for table in [
             "classes", "students", "observations", "observation_students", "observation_standards", "observation_tags", "attachments", "settings",
             "units", "unit_stages", "unit_sessions", "unit_session_standards", "custom_plays", "play_log", "habits", "habit_checks", "parent_reports",
-            "evaluation_drafts", "custom_activities", "evaluation_combined", "embeddings",
+            "evaluation_drafts", "custom_activities", "evaluation_combined", "embeddings", "behavior_opinions",
         ] {
             let n: i64 = conn
                 .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0))
@@ -529,10 +557,9 @@ mod tests {
              INSERT INTO custom_activities (id, data, created_at, updated_at) VALUES ('custom-1', '{}', 't', 't');",
         )
         .unwrap();
-        apply(&conn).unwrap();
+        apply_up_to(&conn, 10).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(v, latest_version());
-        assert_eq!(latest_version(), 10);
+        assert_eq!(v, 10);
         let name: String = conn.query_row("SELECT name FROM students WHERE id = 's'", [], |r| r.get(0)).unwrap();
         assert_eq!(name, "김하늘");
         let n: i64 = conn.query_row("SELECT count(*) FROM custom_activities", [], |r| r.get(0)).unwrap();
@@ -541,5 +568,42 @@ mod tests {
         conn.execute(insert, ["a", "e5-small-q8"]).unwrap();
         conn.execute(insert, ["a", "other"]).unwrap();
         assert!(conn.execute(insert, ["a", "e5-small-q8"]).is_err(), "같은 카드·모델은 하나만");
+    }
+
+    #[test]
+    fn migration_11_keeps_version_10_data_and_adds_behavior_columns_and_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        apply_up_to(&conn, 10).unwrap();
+        conn.execute_batch(
+            "INSERT INTO classes (id, school_year, grade, name, created_at) VALUES ('c', 2027, 1, '1반', 't');
+             INSERT INTO students (id, class_id, number, name, created_at) VALUES ('s', 'c', 1, '김하늘', 't');
+             INSERT INTO observations (id, class_id, observed_at, note, created_at, updated_at) VALUES ('o', 'c', '2027-03-04T10:00:00+09:00', '옛 기록', 't', 't');
+             INSERT INTO evaluation_drafts (id, class_id, student_id, subject, period_from, period_to, sentences, status, created_at, updated_at)
+               VALUES ('d', 'c', 's', '슬', '2027-03-02', '2027-07-18', '[{\"text\":\"관찰함.\",\"evidence\":[\"o:o\"]}]', 'confirmed', 't', 't');
+             INSERT INTO evaluation_combined (id, class_id, student_id, period_from, period_to, text, source_hash, status, created_at, updated_at)
+               VALUES ('a', 'c', 's', '2027-03-02', '2027-07-18', '글', 'h', 'confirmed', 't', 't');
+             INSERT INTO evaluation_combined (id, class_id, student_id, period_from, period_to, text, source_hash, status, created_at, updated_at)
+               VALUES ('b', 'c', 's', '2027-08-01', '2027-12-18', '글', 'h', 'draft', 't', 't');",
+        )
+        .unwrap();
+        apply_up_to(&conn, 11).unwrap();
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, 11);
+        let (note, guidance): (String, i64) = conn.query_row("SELECT note, needs_guidance FROM observations WHERE id = 'o'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((note.as_str(), guidance), ("옛 기록", 0));
+        let n: i64 = conn.query_row("SELECT count(*) FROM evaluation_drafts WHERE generated_text IS NULL", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        // 기존 확정 통합본은 확인된 것으로, 초안은 아직 확인 전으로 본다.
+        let reviewed = |id: &str| -> i64 { conn.query_row("SELECT reviewed FROM evaluation_combined WHERE id = ?1", [id], |r| r.get(0)).unwrap() };
+        assert_eq!((reviewed("a"), reviewed("b")), (1, 0));
+        let insert = "INSERT INTO behavior_opinions (id, class_id, student_id, period_from, period_to, created_at, updated_at)
+                      VALUES (?1, 'c', 's', '2027-03-02', '2027-07-18', 't', 't')";
+        conn.execute(insert, ["x"]).unwrap();
+        assert!(conn.execute(insert, ["y"]).is_err(), "같은 학생·기간은 하나만");
+        assert!(conn.execute("UPDATE behavior_opinions SET status = 'bogus' WHERE id = 'x'", []).is_err());
+        conn.execute("DELETE FROM students WHERE id = 's'", []).unwrap();
+        let n: i64 = conn.query_row("SELECT count(*) FROM behavior_opinions", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
     }
 }

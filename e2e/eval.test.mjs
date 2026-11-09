@@ -93,6 +93,17 @@ describe('화면 E2E 3부(통합 평어·진단 파일)', { concurrency: false }
     return el;
   };
 
+  /** 「근거 확인」 체크(설계 24): 범위 안의 체크를 모두 켠다. 확정 단추는 그 전에는 꺼져 있어야 한다. */
+  const reviewAll = async (scope, what) => {
+    const labels = `${scope}//label[contains(@class,'ev-review')][contains(normalize-space(.),'근거 확인')]`;
+    const n = (await driver.findElements(By.xpath(labels))).length;
+    assert.ok(n > 0, `${what}에 「근거 확인」 체크가 없음`);
+    const confirm = await waitVisible(driver, `${scope}//button[normalize-space(.)='확정']`, WAIT, `${what} 「확정」`);
+    assert.equal(await confirm.isEnabled(), false, `${what}: 「근거 확인」 전에는 「확정」이 꺼져 있어야 함`);
+    for (let i = 1; i <= n; i += 1) await click(driver, `(${labels})[${i}]`);
+    await driver.wait(async () => (await driver.findElements(By.xpath(`${labels}[contains(@class,' on')]`))).length === n, WAIT, `${what}의 「근거 확인」이 모두 켜지지 않음`);
+  };
+
   const inputValue = async (xpath) => (await driver.findElement(By.xpath(xpath))).getAttribute('value');
 
   /** 주제책을 고르고(이미 골라져 있으면 그대로) 세 교과 성취기준 단추가 나타나기를 기다린다. */
@@ -153,6 +164,7 @@ describe('화면 E2E 3부(통합 평어·진단 파일)', { concurrency: false }
       const make = await enabledButton(`${EVAL_STUDENT}//button[contains(.,'초안 만들기')]`, `${subject} 「초안 만들기」`);
       await make.click();
       await waitVisible(driver, `${EVAL_STUDENT}//*[@role='status'][contains(.,'템플릿으로 초안을 만들었습니다')]`, WAIT, `${subject} 템플릿 초안 안내`);
+      await reviewAll(EVAL_STUDENT, `${subject} 초안`);
       const confirm = await enabledButton(`${EVAL_STUDENT}//button[normalize-space(.)='확정']`, `${subject} 「확정」`);
       await confirm.click();
       await waitVisible(driver, `${EVAL_STUDENT}//span[contains(@class,'ev-status-confirmed')]`, WAIT, `${subject} 확정 표시`);
@@ -193,6 +205,7 @@ describe('화면 E2E 3부(통합 평어·진단 파일)', { concurrency: false }
   });
 
   scenario('4. 통합본 확정 → 복사: 복사한 글이 통합본과 같다', async () => {
+    await reviewAll(COMBINED, '통합본');
     const confirm = await enabledButton(`${COMBINED}//button[normalize-space(.)='확정']`, '통합본 「확정」');
     await confirm.click();
     await waitVisible(driver, `${COMBINED}//span[contains(@class,'ev-status-confirmed')]`, WAIT, '통합본 확정 표시');

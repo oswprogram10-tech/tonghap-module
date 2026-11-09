@@ -12,6 +12,14 @@ use super::data::{templates, Forbidden, Template};
 pub struct Sentence {
     pub text: String,
     pub evidence: Vec<String>,
+    /// 선생님이 「근거 확인」을 눌렀는가(AI·템플릿이 만든 문장을 그대로 입력하지 않도록 하는 장치, 설계 24).
+    #[serde(default)]
+    pub reviewed: bool,
+}
+
+/// 문장들을 공백으로 이어 한 글로 만든다(만든 그대로의 글과 비교할 때 쓴다).
+pub fn joined_text(sentences: &[Sentence]) -> String {
+    sentences.iter().map(|s| s.text.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,7 +39,7 @@ impl Style {
         }
     }
 
-    fn ending(self) -> &'static str {
+    pub(super) fn ending(self) -> &'static str {
         let e = &templates().endings;
         match self {
             Style::Ham => &e.ham,
@@ -137,9 +145,9 @@ pub fn note_phrase(memo: &str) -> Option<String> {
         } else {
             return None;
         }
-    } else if final_index(last) == 16 {
-        // 함 -> 하는, 줌 -> 주는, 봄 -> 보는
-        let base = char::from_u32(last as u32 - 16)?;
+    } else if final_index(last) == 16 || final_index(last) == 10 {
+        // 함 -> 하는, 줌 -> 주는, 봄 -> 보는 / 끼어듦 -> 끼어드는, 만듦 -> 만드는 (ㄹ받침은 떨어진다)
+        let base = char::from_u32(last as u32 - final_index(last))?;
         format!("{stem}{base}는")
     } else {
         return None;
@@ -185,7 +193,7 @@ impl Slots {
 }
 
 /// `{슬롯}` 또는 `{슬롯|을/를}`에서 (이름, 조사쌍, 시작, 끝)을 차례로 꺼낸다. `{E}`는 건너뛴다.
-fn placeholders(text: &str) -> Vec<(String, Option<String>, usize, usize)> {
+pub(super) fn placeholders(text: &str) -> Vec<(String, Option<String>, usize, usize)> {
     let mut out = Vec::new();
     let mut from = 0;
     while let Some(rel) = text[from..].find('{') {
@@ -203,6 +211,25 @@ fn placeholders(text: &str) -> Vec<(String, Option<String>, usize, usize)> {
         from = end;
     }
     out
+}
+
+/// 틀의 `{슬롯}`을 `get`이 돌려준 값으로 채우고 `{E}`를 종결로 바꾼 뒤 마침표를 붙인다.
+pub(super) fn fill(text: &str, ending: &str, get: &dyn Fn(&str) -> Option<String>) -> String {
+    let mut out = String::new();
+    let mut last = 0;
+    for (name, pair, start, end) in placeholders(text) {
+        out.push_str(&text[last..start]);
+        let value = get(&name).unwrap_or_default();
+        out.push_str(&value);
+        if let Some(p) = pair {
+            out.push_str(josa(&value, &p));
+        }
+        last = end;
+    }
+    out.push_str(&text[last..]);
+    let mut s = out.replace("{E}", ending);
+    s.push('.');
+    s
 }
 
 fn needs(t: &Template) -> Vec<String> {
@@ -353,7 +380,7 @@ pub fn generate(bundle: &Bundle, style: Style, target_chars: usize, seed: &str, 
         let text = render(t, &item.slots, ending);
         used.push(&t.id);
         total += text.chars().count() + usize::from(!sentences.is_empty());
-        sentences.push(Sentence { text, evidence: vec![ev.id().to_string()] });
+        sentences.push(Sentence { text, evidence: vec![ev.id().to_string()], reviewed: false });
     }
     sentences
 }
@@ -386,6 +413,8 @@ mod tests {
         assert_eq!(note_phrase("친구와 정리합니다").as_deref(), Some("친구와 정리하는"));
         assert_eq!(note_phrase("혼자 찾아요").as_deref(), Some("혼자 찾는"));
         assert_eq!(note_phrase("친구를 도와줬어요").as_deref(), Some("친구를 도와줬던"));
+        assert_eq!(note_phrase("분위기를 만듦").as_deref(), Some("분위기를 만드는"));
+        assert_eq!(note_phrase("차례를 지키지 않고 끼어듦.").as_deref(), Some("차례를 지키지 않고 끼어드는"));
         assert_eq!(note_phrase("열심히 모습을 보임"), None);
         assert_eq!(note_phrase("짧"), None);
         assert_eq!(note_phrase(&"가".repeat(60)), None);

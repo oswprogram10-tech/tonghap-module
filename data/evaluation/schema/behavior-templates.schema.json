@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "행동특성 및 종합의견 템플릿",
+  "description": "행동특성 및 종합의견 템플릿 생성기의 문장 틀(설계 24). {E}는 문체별 종결로 바뀐다. 모든 틀은 근거 메모 {note}를 쓴다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dataVersion", "tagGroups", "changeWords", "semesterLabels", "templates"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "dataVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "note": { "type": "string" },
+    "tagGroups": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "인성·생활 활동 태그 -> 장점 템플릿 묶음 이름. 키가 곧 「인성·생활 태그」 목록이다.",
+      "additionalProperties": { "type": "string", "pattern": "^[a-z][a-z-]*$" }
+    },
+    "changeWords": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "description": "단점(지도가 필요한 모습)을 쓸 때 함께 있어야 하는 변화 가능성 표현",
+      "items": { "type": "string", "minLength": 2, "maxLength": 10 }
+    },
+    "semesterLabels": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "string", "pattern": "^\\([12]학기\\)$" }
+    },
+    "templates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "group", "text"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "kind": { "enum": ["strength", "growth", "concern"] },
+          "group": { "type": "string", "pattern": "^[a-z][a-z-]*$", "description": "strength: tagGroups의 값 또는 general. growth·concern: general" },
+          "text": { "type": "string", "minLength": 8, "maxLength": 140 }
+        }
+      }
+    }
+  }
+}

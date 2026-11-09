@@ -38,6 +38,7 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(editing?.unitSessionId ?? null);
+  const [needsGuidance, setNeedsGuidance] = useState(editing?.needsGuidance ?? false);
   const [sessionOptions, setSessionOptions] = useState<SessionOption[]>([]);
 
   const topics = useMemo(() => topicsOfGrade(cls.grade), [cls.grade]);
@@ -107,6 +108,7 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
         standardCodes: codes,
         tags,
         unitSessionId: sessionId,
+        needsGuidance,
       };
       const obs = editing ? await recordsApi.observationUpdate(editing.id, input) : await recordsApi.observationCreate(input);
 
@@ -177,7 +179,7 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
         <label className="rec-field rec-grow">
           주제책
           <select value={topicId ?? ''} onChange={(e) => onTopicChange(e.target.value || null)}>
-            <option value="">(주제책 없음)</option>
+            <option value="">생활(주제책 없음)</option>
             {topics.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.semester}학기 {t.order}. {t.title}
@@ -261,6 +263,14 @@ export default function ObservationForm({ cls, students, topicId, onTopicChange,
           </button>
         ))}
       </div>
+
+      <label className="rec-guidance">
+        <input type="checkbox" checked={needsGuidance} onChange={(e) => setNeedsGuidance(e.target.checked)} />
+        <span>
+          <strong>지도가 필요한 모습</strong>
+          <span className="diag-hint"> 선생님이 단점으로 볼 만한 행동을 남길 때 켜세요. 행동특성 및 종합의견의 단점 근거가 되며, 학부모 리포트에는 기본으로 넣지 않습니다.</span>
+        </span>
+      </label>
 
       <h3 className="rec-h">메모</h3>
       <textarea className="rec-textarea" aria-label="메모" rows={4} value={note} placeholder="본 것, 들은 것을 짧게 적어 주세요." onChange={(e) => setNote(e.target.value)} />

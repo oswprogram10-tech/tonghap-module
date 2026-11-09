@@ -49,6 +49,8 @@ export interface ObservationInput {
   tags: string[];
   /** 연결한 단원 차시(선택). */
   unitSessionId?: string | null;
+  /** 「지도가 필요한 모습」 표시. 행동특성 및 종합의견의 단점 근거이며, 학부모 리포트에는 기본으로 넣지 않는다. */
+  needsGuidance?: boolean;
 }
 
 export interface Observation extends ObservationInput {
@@ -107,7 +109,7 @@ export interface ClassOverview {
 }
 
 /** 활동 태그(고정 목록). */
-export const ACTIVITY_TAGS = ['실천', '탐구', '놀이', '표현', '협력', '배려', '질문', '안전', '습관'] as const;
+export const ACTIVITY_TAGS = ['실천', '탐구', '놀이', '표현', '협력', '배려', '질문', '안전', '습관', '책임', '존중', '성장'] as const;
 
 export const errorText = (e: unknown) => (typeof e === 'string' ? e : e instanceof Error ? e.message : JSON.stringify(e));
 

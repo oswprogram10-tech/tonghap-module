@@ -43,10 +43,10 @@ pub fn neis_bytes(text: &str) -> usize {
 
 // ---------- 새 검사 ----------
 
-/// 한글 음절의 받침이 ㅁ인가(함·음·임·됨·봄·줌·짐·김 ...).
+/// 한글 음절의 받침이 ㅁ(번호 16) 또는 ㄻ(번호 10)인가(함·음·됨·봄 ... 만듦·앎·삶).
 fn ends_with_mieum(c: char) -> bool {
     let n = c as u32;
-    (0xAC00..=0xD7A3).contains(&n) && (n - 0xAC00) % 28 == 16
+    (0xAC00..=0xD7A3).contains(&n) && matches!((n - 0xAC00) % 28, 10 | 16)
 }
 
 fn is_closer(c: char) -> bool {
@@ -193,6 +193,10 @@ pub struct StoredCombined {
     pub updated_at: String,
     /// 만든 뒤 교과 평어가 바뀌었다(다시 합치기를 안내한다).
     pub stale: bool,
+    /// 선생님이 「근거 확인」을 체크했다(확정의 조건). 합칠 때마다 풀리고, 글을 고쳐도 유지된다.
+    pub reviewed: bool,
+    /// 언어 모델이 쓴 교과 평어가 섞였는데, 합친 글을 한 글자도 고치지 않았다.
+    pub unchanged_from_model: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -223,6 +227,8 @@ pub struct CombinedView {
 pub struct Sources {
     /// 바·슬·즐 순서. 확정되지 않았으면 None.
     texts: Vec<Option<String>>,
+    /// 세 교과 중 언어 모델이 쓴 초안이 있다.
+    any_llm: bool,
 }
 
 impl Sources {
@@ -248,14 +254,14 @@ impl Sources {
 
 fn load_sources(conn: &Connection, student_id: &str, from: &str, to: &str) -> DbResult<Sources> {
     let mut texts = Vec::new();
+    let mut any_llm = false;
     for subject in SUBJECTS {
         let k = Key { student_id: student_id.to_string(), subject, from: from.to_string(), to: to.to_string() };
-        let text = load_draft(conn, &k)?.filter(|d| d.status == "confirmed" && !d.sentences.is_empty()).map(|d| {
-            d.sentences.iter().map(|s| tsv_cell(&s.text)).filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ")
-        });
-        texts.push(text);
+        let draft = load_draft(conn, &k)?.filter(|d| d.status == "confirmed" && !d.sentences.is_empty());
+        any_llm |= draft.as_ref().is_some_and(|d| d.generator.starts_with("llm:"));
+        texts.push(draft.map(|d| d.sentences.iter().map(|s| tsv_cell(&s.text)).filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ")));
     }
-    Ok(Sources { texts })
+    Ok(Sources { texts, any_llm })
 }
 
 fn norm(key: &CombinedKey) -> DbResult<(String, String)> {
@@ -270,13 +276,24 @@ struct Row {
     status: String,
     confirmed_at: Option<String>,
     updated_at: String,
+    reviewed: bool,
+    generated_text: Option<String>,
 }
 
 fn load_row(conn: &Connection, student_id: &str, from: &str, to: &str) -> DbResult<Option<Row>> {
     conn.query_row(
-        "SELECT id, text, source_hash, status, confirmed_at, updated_at FROM evaluation_combined WHERE student_id = ?1 AND period_from = ?2 AND period_to = ?3",
+        "SELECT id, text, source_hash, status, confirmed_at, updated_at, reviewed, generated_text FROM evaluation_combined WHERE student_id = ?1 AND period_from = ?2 AND period_to = ?3",
         params![student_id, from, to],
-        |r| Ok(Row { id: r.get(0)?, text: r.get(1)?, source_hash: r.get(2)?, status: r.get(3)?, confirmed_at: r.get(4)?, updated_at: r.get(5)? }),
+        |r| Ok(Row {
+            id: r.get(0)?,
+            text: r.get(1)?,
+            source_hash: r.get(2)?,
+            status: r.get(3)?,
+            confirmed_at: r.get(4)?,
+            updated_at: r.get(5)?,
+            reviewed: r.get::<_, i64>(6)? != 0,
+            generated_text: r.get(7)?,
+        }),
     )
     .optional()
     .db()
@@ -354,7 +371,8 @@ pub fn view(conn: &Connection, key: &CombinedKey) -> DbResult<CombinedView> {
         can_combine: sources.all_confirmed(),
         combined: row.map(|r| {
             let stale = is_stale(&r, &sources);
-            StoredCombined { id: r.id, text: r.text, status: r.status, confirmed_at: r.confirmed_at, updated_at: r.updated_at, stale }
+            let unchanged_from_model = sources.any_llm && r.generated_text.as_deref().is_some_and(|g| g == r.text);
+            StoredCombined { id: r.id, text: r.text, status: r.status, confirmed_at: r.confirmed_at, updated_at: r.updated_at, stale, reviewed: r.reviewed, unchanged_from_model }
         }),
         check,
     })
@@ -378,15 +396,15 @@ pub fn combine(conn: &Connection, input: &CombineInput) -> DbResult<CombinedView
         }
         Some(r) => {
             conn.execute(
-                "UPDATE evaluation_combined SET text = ?2, source_hash = ?3, status = 'draft', confirmed_at = NULL, updated_at = ?4 WHERE id = ?1",
+                "UPDATE evaluation_combined SET text = ?2, source_hash = ?3, status = 'draft', confirmed_at = NULL, updated_at = ?4, reviewed = 0, generated_text = ?2 WHERE id = ?1",
                 params![r.id, text, hash, now],
             )
             .db()?;
         }
         None => {
             conn.execute(
-                "INSERT INTO evaluation_combined (id, class_id, student_id, period_from, period_to, text, source_hash, status, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'draft', ?8, ?8)",
+                "INSERT INTO evaluation_combined (id, class_id, student_id, period_from, period_to, text, source_hash, status, created_at, updated_at, reviewed, generated_text)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'draft', ?8, ?8, 0, ?6)",
                 params![new_id(), student.class_id, student.id, from, to, text, hash, now],
             )
             .db()?;
@@ -405,7 +423,8 @@ fn key_of(conn: &Connection, id: &str) -> DbResult<CombinedKey> {
 }
 
 /// 선생님이 다듬은 글을 저장한다. 상태는 초안으로 돌아가고, 합칠 때의 해시는 그대로 둔다.
-pub fn save(conn: &Connection, id: &str, text: &str) -> DbResult<CombinedView> {
+/// `reviewed`가 있으면 「근거 확인」 체크를 그 값으로 바꾸고, 없으면 지금 값을 유지한다(고쳐 써도 체크는 유지).
+pub fn save(conn: &Connection, id: &str, text: &str, reviewed: Option<bool>) -> DbResult<CombinedView> {
     let key = key_of(conn, id)?;
     let text = text.replace("\r\n", "\n").trim().to_string();
     if text.is_empty() {
@@ -414,7 +433,11 @@ pub fn save(conn: &Connection, id: &str, text: &str) -> DbResult<CombinedView> {
     if text.chars().count() > MAX_TEXT_CHARS {
         return Err(format!("통합본이 너무 깁니다({MAX_TEXT_CHARS}자까지)"));
     }
-    conn.execute("UPDATE evaluation_combined SET text = ?2, status = 'draft', confirmed_at = NULL, updated_at = ?3 WHERE id = ?1", params![id, text, now_iso()]).db()?;
+    conn.execute(
+        "UPDATE evaluation_combined SET text = ?2, status = 'draft', confirmed_at = NULL, updated_at = ?3, reviewed = COALESCE(?4, reviewed) WHERE id = ?1",
+        params![id, text, now_iso(), reviewed.map(i64::from)],
+    )
+    .db()?;
     view(conn, &key)
 }
 
@@ -435,6 +458,9 @@ pub fn confirm(conn: &Connection, id: &str) -> DbResult<CombinedView> {
     let c = check_text(conn, &key.student_id, &row.text, Some(&sources))?;
     if !c.can_confirm {
         return Err("금지 표현이나 다른 학생 이름이 들어 있어 확정할 수 없습니다. 경고를 확인하고 고쳐 주세요".to_string());
+    }
+    if !row.reviewed {
+        return Err("통합본의 「근거 확인」을 체크해 주세요. AI나 템플릿이 만든 문장은 근거와 실제 모습을 확인한 뒤 확정할 수 있습니다".to_string());
     }
     conn.execute("UPDATE evaluation_combined SET status = 'confirmed', confirmed_at = ?2 WHERE id = ?1", params![id, now_iso()]).db()?;
     view(conn, &key)

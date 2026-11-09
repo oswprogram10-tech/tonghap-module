@@ -10,6 +10,7 @@ use serde::Deserialize;
 use crate::db::DbResult;
 
 const TEMPLATES_JSON: &str = include_str!("../../../../data/evaluation/templates.json");
+const BEHAVIOR_TEMPLATES_JSON: &str = include_str!("../../../../data/evaluation/behavior-templates.json");
 const FORBIDDEN_JSON: &str = include_str!("../../../../data/evaluation/forbidden.json");
 const CURRICULUM_JSON: &str = include_str!("../../../../data/curriculum/integrated-2022.json");
 
@@ -49,6 +50,33 @@ pub struct Templates {
 pub fn templates() -> &'static Templates {
     static T: OnceLock<Templates> = OnceLock::new();
     T.get_or_init(|| serde_json::from_str(TEMPLATES_JSON).expect("data/evaluation/templates.json"))
+}
+
+// ---------- 행동특성 및 종합의견 템플릿 ----------
+
+#[derive(Debug, Deserialize)]
+pub struct BehaviorTemplate {
+    pub id: String,
+    /// strength | growth | concern
+    pub kind: String,
+    pub group: String,
+    pub text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BehaviorTemplates {
+    /// 인성·생활 활동 태그 -> 장점 묶음. 키가 「인성·생활 태그」 목록이다.
+    pub tag_groups: HashMap<String, String>,
+    /// 단점에 함께 있어야 하는 변화 가능성 표현.
+    pub change_words: Vec<String>,
+    pub semester_labels: Vec<String>,
+    pub templates: Vec<BehaviorTemplate>,
+}
+
+pub fn behavior_templates() -> &'static BehaviorTemplates {
+    static T: OnceLock<BehaviorTemplates> = OnceLock::new();
+    T.get_or_init(|| serde_json::from_str(BEHAVIOR_TEMPLATES_JSON).expect("data/evaluation/behavior-templates.json"))
 }
 
 // ---------- 금지 표현 ----------

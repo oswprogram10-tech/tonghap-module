@@ -173,7 +173,9 @@ pub fn request_body(bundle: &Bundle, style: Style, target_chars: usize, seed: u3
     for ex in &prompt().examples {
         if let Some(sentences) = ex.outputs.get(key) {
             messages.push(json!({ "role": "user", "content": user_message(&ex.bundle) }));
-            messages.push(json!({ "role": "assistant", "content": json!({ "sentences": sentences }).to_string() }));
+            // 확인 표시(`reviewed`)는 모델에게 보이지 않는다.
+            let shown: Vec<Value> = sentences.iter().map(|s| json!({ "text": s.text, "evidence": s.evidence })).collect();
+            messages.push(json!({ "role": "assistant", "content": json!({ "sentences": shown }).to_string() }));
         }
     }
     messages.push(json!({ "role": "user", "content": user_message(bundle) }));

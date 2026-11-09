@@ -45,6 +45,12 @@ pub enum Evidence {
         #[serde(skip_serializing_if = "Option::is_none")]
         quote: Option<String>,
         together: bool,
+        /// 「지도가 필요한 모습」 기록(행동특성 및 종합의견의 단점 근거). 교과 평어 묶음에서는 항상 거짓이다.
+        #[serde(default, skip_serializing_if = "is_false")]
+        negative: bool,
+        /// 앞선 「지도가 필요한 모습」 기록의 id. 그 뒤에 같은 태그의 긍정 기록이 이어진 짝(변화 근거).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pair: Option<String>,
     },
     Habit {
         id: String,
@@ -61,14 +67,22 @@ pub enum Evidence {
     },
 }
 
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 impl Evidence {
+    pub fn is_negative(&self) -> bool {
+        matches!(self, Evidence::Observation { negative: true, .. })
+    }
+
     pub fn id(&self) -> &str {
         match self {
             Evidence::Observation { id, .. } | Evidence::Habit { id, .. } | Evidence::Session { id, .. } => id,
         }
     }
 
-    fn sort_key(&self) -> (u8, &str, &str) {
+    pub(super) fn sort_key(&self) -> (u8, &str, &str) {
         match self {
             Evidence::Habit { id, .. } => (0, "", id),
             Evidence::Observation { id, date, .. } | Evidence::Session { id, date, .. } => (1, date, id),
@@ -87,10 +101,10 @@ pub struct Bundle {
 }
 
 /// 고르기 전의 후보. `group`이 작을수록 먼저, `topic_id`로 주제책을 고르게 섞는다.
-struct Cand {
-    ev: Evidence,
-    group: u8,
-    topic_id: Option<String>,
+pub(super) struct Cand {
+    pub(super) ev: Evidence,
+    pub(super) group: u8,
+    pub(super) topic_id: Option<String>,
 }
 
 /// 그 교과의 성격 태그(활동 태그 중 템플릿 묶음에 대응하는 것).
@@ -98,7 +112,7 @@ pub fn subject_tags(subject: &str) -> Vec<&'static str> {
     templates().tag_groups.get(subject).map(|m| m.keys().map(String::as_str).collect()).unwrap_or_default()
 }
 
-fn first_chars(s: &str, n: usize) -> String {
+pub(super) fn first_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
@@ -154,6 +168,8 @@ fn observation_cands(conn: &Connection, media: &Path, class_id: &str, student_id
                 text,
                 quote,
                 together: o.students.iter().any(|s| s.id != student_id),
+                negative: false,
+                pair: None,
             },
         });
     }
@@ -188,7 +204,7 @@ fn session_cands(conn: &Connection, class_id: &str, subject: &str, from: &str, t
     Ok(out)
 }
 
-fn habit_cands(conn: &Connection, student_id: &str, from: &str, to: &str, sc: &Scrubber) -> DbResult<Vec<Cand>> {
+pub(super) fn habit_cands(conn: &Connection, student_id: &str, from: &str, to: &str, sc: &Scrubber) -> DbResult<Vec<Cand>> {
     let days = (parse_date(to)? - parse_date(from)?).num_days() + 1;
     let summary = habits::student_summary(conn, student_id, to, days)?;
     Ok(summary
@@ -203,9 +219,10 @@ fn habit_cands(conn: &Connection, student_id: &str, from: &str, to: &str, sc: &S
 }
 
 /// 우선순위 묶음(group) 순서대로, 묶음 안에서는 주제책을 번갈아 가며 `cap`개까지 고른다.
-fn pick_balanced(cands: &[Cand], cap: usize) -> Vec<usize> {
+pub(super) fn pick_balanced(cands: &[Cand], cap: usize) -> Vec<usize> {
     let mut chosen = Vec::new();
-    for group in 0..=2u8 {
+    let last_group = cands.iter().map(|c| c.group).max().unwrap_or(0);
+    for group in 0..=last_group {
         let mut buckets: Vec<(Option<&str>, VecDeque<usize>)> = Vec::new();
         for (i, c) in cands.iter().enumerate().filter(|(_, c)| c.group == group) {
             let key = c.topic_id.as_deref();

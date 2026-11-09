@@ -19,6 +19,8 @@ export interface ReportObservation {
   tags: string[];
   /** 함께 기록된 다른 학생 수(이름은 받지 않는다). */
   othersCount: number;
+  /** 「지도가 필요한 모습」 표시. 기본 선택에서는 빠진다. */
+  needsGuidance: boolean;
 }
 
 export interface ReportPhoto {

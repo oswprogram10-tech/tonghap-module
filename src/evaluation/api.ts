@@ -18,6 +18,8 @@ export const MIN_EVIDENCE = 3;
 export interface Sentence {
   text: string;
   evidence: string[];
+  /** 선생님이 「근거 확인」을 눌렀는가(AI·템플릿 문장을 그대로 입력하지 않도록 하는 장치). */
+  reviewed: boolean;
 }
 
 export type Evidence =
@@ -31,13 +33,17 @@ export type Evidence =
       text: string;
       quote?: string;
       together: boolean;
+      /** 「지도가 필요한 모습」 기록(행동특성 및 종합의견) */
+      negative?: boolean;
+      /** 앞선 「지도가 필요한 모습」 기록의 id(그 뒤에 이어진 긍정 기록) */
+      pair?: string;
     }
   | { kind: 'habit'; id: string; title: string; doneDays: number; schoolDays: number }
   | { kind: 'session'; id: string; date: string; topic: string | null; title: string; standards: string[] };
 
 export interface Bundle {
   student: { alias: string };
-  subject: SubjectCode;
+  subject: SubjectCode | '행';
   period: { from: string; to: string };
   evidence: Evidence[];
   standardsText: Record<string, string>;
@@ -53,6 +59,7 @@ export interface DraftCheck {
   totalChars: number;
   length: Warning | null;
   canConfirm: boolean;
+  allReviewed: boolean;
 }
 
 export interface StoredDraft {
@@ -62,6 +69,8 @@ export interface StoredDraft {
   generator: string;
   confirmedAt: string | null;
   updatedAt: string;
+  /** 언어 모델이 만든 글을 한 글자도 고치지 않았다. */
+  unchangedFromModel: boolean;
 }
 
 export interface DraftView {
@@ -109,7 +118,16 @@ export interface CombinedView {
   to: string;
   subjects: { code: SubjectCode; name: string; confirmed: boolean }[];
   canCombine: boolean;
-  combined: { id: string; text: string; status: 'draft' | 'confirmed'; confirmedAt: string | null; updatedAt: string; stale: boolean } | null;
+  combined: {
+    id: string;
+    text: string;
+    status: 'draft' | 'confirmed';
+    confirmedAt: string | null;
+    updatedAt: string;
+    stale: boolean;
+    reviewed: boolean;
+    unchangedFromModel: boolean;
+  } | null;
   check: CombinedCheck | null;
 }
 
@@ -119,7 +137,7 @@ export interface CombinedRow {
   stale: boolean;
 }
 
-export type ExportFormat = 'combined' | 'bySubject';
+export type ExportFormat = 'combined' | 'bySubject' | 'behavior';
 
 export interface EvalSettings {
   style: EvalStyle;
@@ -180,11 +198,90 @@ export const evalApi = {
   combinedView: (key: CombinedKey) => invoke<CombinedView>('eval_combined_view', { key }),
   combinedStatus: (classId: string, from: string, to: string) => invoke<Record<string, CombinedRow>>('eval_combined_status', { classId, from, to }),
   combine: (key: CombinedKey, overwrite: boolean) => invoke<CombinedView>('eval_combine', { input: { ...key, overwrite } }),
-  combinedSave: (id: string, text: string) => invoke<CombinedView>('eval_combined_save', { id, text }),
+  combinedSave: (id: string, text: string, reviewed?: boolean) => invoke<CombinedView>('eval_combined_save', { id, text, reviewed }),
   combinedCheck: (key: CombinedKey, text: string) => invoke<CombinedCheck>('eval_combined_check', { input: { ...key, text } }),
   combinedConfirm: (id: string) => invoke<CombinedView>('eval_combined_confirm', { id }),
   combinedUnconfirm: (id: string) => invoke<CombinedView>('eval_combined_unconfirm', { id }),
 };
+
+// ---------- 행동특성 및 종합의견 ----------
+
+export const BEHAVIOR_TARGET_MIN = 150;
+export const BEHAVIOR_TARGET_MAX = 800;
+
+export interface BehaviorWarning {
+  code: string;
+  message: string;
+}
+
+export interface BehaviorCheck {
+  sentences: BehaviorWarning[][];
+  overall: BehaviorWarning[];
+  totalChars: number;
+  totalBytes: number;
+  length: BehaviorWarning | null;
+  canConfirm: boolean;
+  allReviewed: boolean;
+}
+
+export interface StoredOpinion {
+  id: string;
+  sentences: Sentence[];
+  splitSemesters: boolean;
+  status: 'draft' | 'confirmed';
+  generator: string;
+  confirmedAt: string | null;
+  updatedAt: string;
+  unchangedFromModel: boolean;
+}
+
+export interface BehaviorView {
+  student: { id: string; number: number; name: string };
+  from: string;
+  to: string;
+  bundle: Bundle;
+  enough: boolean;
+  minEvidence: number;
+  targetChars: number;
+  opinion: StoredOpinion | null;
+  check: BehaviorCheck | null;
+}
+
+export interface BehaviorLlmResult {
+  view: BehaviorView;
+  generator: string;
+  fellBack: boolean;
+  notice: string | null;
+  detail: string | null;
+}
+
+export interface OpinionKey {
+  studentId: string;
+  from: string;
+  to: string;
+}
+
+export const behaviorApi = {
+  view: (key: OpinionKey) => invoke<BehaviorView>('eval_behavior_view', { key }),
+  status: (classId: string, from: string, to: string) => invoke<StudentRow[]>('eval_behavior_status', { classId, from, to }),
+  generate: (key: OpinionKey, excludedIds: string[], splitSemesters: boolean) =>
+    invoke<BehaviorView>('eval_behavior_generate', { input: { ...key, excludedIds, splitSemesters } }),
+  generateLlm: (key: OpinionKey, excludedIds: string[], splitSemesters: boolean) =>
+    invoke<BehaviorLlmResult>('eval_behavior_generate_llm', { input: { ...key, excludedIds, splitSemesters } }),
+  save: (key: OpinionKey, sentences: Sentence[], splitSemesters: boolean) =>
+    invoke<BehaviorView>('eval_behavior_save', { input: { ...key, sentences, splitSemesters } }),
+  check: (key: OpinionKey, sentences: Sentence[], splitSemesters: boolean) =>
+    invoke<BehaviorCheck>('eval_behavior_check', { input: { ...key, sentences, splitSemesters } }),
+  confirm: (key: OpinionKey) => invoke<BehaviorView>('eval_behavior_confirm', { key }),
+  targetSet: (targetChars: number) => invoke<number>('eval_behavior_target_set', { targetChars }),
+};
+
+/** AI·템플릿 문장 확인 안내(확정 버튼 옆). */
+export const REVIEW_NOTICE =
+  'AI나 템플릿이 만든 문장을 그대로 입력하지 않도록 2026 기재요령이 정하고 있습니다. 근거와 실제 모습을 확인해 주세요.';
+/** 언어 모델이 만든 글을 고치지 않고 확정하려 할 때의 확인 창 문구. */
+export const UNCHANGED_NOTICE =
+  '언어 모델이 만든 문장을 고치지 않았습니다. 기재요령은 AI가 만든 문장을 그대로 입력하지 않도록 합니다. 그대로 확정할까요?';
 
 export const joinSentences = (sentences: Sentence[]) => sentences.map((s) => s.text.trim()).filter(Boolean).join(' ');
 

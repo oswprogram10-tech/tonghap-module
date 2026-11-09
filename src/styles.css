@@ -2421,3 +2421,90 @@ button {
 .ev-layout .rec-side .rec-count {
   white-space: nowrap;
 }
+
+/* 행동특성 및 종합의견, AI 문장 확인 장치(설계 24) */
+.rec-tag-guidance {
+  background: #fff1d6;
+  color: #7a4b00;
+  border-color: #e6b44c;
+}
+
+.rec-guidance {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--touch);
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.rec-guidance input,
+.ev-review input {
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.ev-review {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--touch);
+  padding: 8px 14px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ev-review.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.ev-review-row {
+  align-items: center;
+}
+
+.ev-review-detail {
+  padding: 8px 12px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 8px;
+}
+
+.ev-review-notice {
+  margin: 8px 0;
+}
+
+.ev-ask-box {
+  margin: 12px 0;
+  padding: 12px 16px;
+  border: 2px solid var(--warn-text);
+  border-radius: 12px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-weight: 700;
+}
+
+.ev-mode {
+  margin: 8px 0;
+}
+
+.ev-warn-noChange,
+.ev-warn-noStrength {
+  background: #fde7e2;
+  color: #a1260d;
+}
+
+.bh-pair {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--muted);
+}

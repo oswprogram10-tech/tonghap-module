@@ -22,6 +22,7 @@ import {
   type StudentRow,
   type SubjectCode,
 } from './api';
+import BehaviorPanel from './BehaviorPanel';
 import CombinedPanel from './CombinedPanel';
 import StudentDraft from './StudentDraft';
 
@@ -46,6 +47,7 @@ export default function EvalView() {
 
 function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
   const { cls, classes } = ctx;
+  const [mode, setMode] = useState<'subject' | 'behavior'>('subject');
   const [subject, setSubject] = useState<SubjectCode>('슬');
   const [semester, setSemester] = useState<1 | 2 | 0>(currentSemester());
   const initial = semesterPeriod(cls.schoolYear, currentSemester());
@@ -212,6 +214,19 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
         />
       )}
 
+      <div className="rec-chips ev-mode" role="group" aria-label="평어 종류">
+        <button className={mode === 'subject' ? 'rec-chip on' : 'rec-chip'} aria-pressed={mode === 'subject'} disabled={running} onClick={() => setMode('subject')}>
+          교과 (성취수준 및 특기사항)
+        </button>
+        <button className={mode === 'behavior' ? 'rec-chip on' : 'rec-chip'} aria-pressed={mode === 'behavior'} disabled={running} onClick={() => setMode('behavior')}>
+          행동특성 및 종합의견
+        </button>
+      </div>
+
+      {mode === 'behavior' ? (
+        <BehaviorPanel ctx={ctx} llm={llm} />
+      ) : (
+        <>
       <p className="ev-notice" role="note">
         초안입니다. 교사의 관찰과 판단으로 고쳐 주세요. 모든 문장은 기록(근거)을 바탕으로 하며, 확정해야 복사·내보내기를 할 수 있습니다.
       </p>
@@ -357,6 +372,8 @@ function EvalPanel({ ctx }: { ctx: RecordsCtx }) {
           )}
         </div>
       </div>
+        </>
+      )}
     </main>
   );
 }

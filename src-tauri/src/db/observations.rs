@@ -29,6 +29,9 @@ pub struct ObservationInput {
     /// 연결할 단원 차시(선택). 같은 학급 단원의 차시여야 한다.
     #[serde(default)]
     pub unit_session_id: Option<String>,
+    /// 「지도가 필요한 모습」 표시(행동특성 및 종합의견의 단점 근거, 학부모 리포트에서는 기본 제외).
+    #[serde(default)]
+    pub needs_guidance: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -51,6 +54,7 @@ pub struct Observation {
     pub tags: Vec<String>,
     pub unit_session_id: Option<String>,
     pub unit_session_title: Option<String>,
+    pub needs_guidance: bool,
     pub created_at: String,
     pub updated_at: String,
     pub deleted_at: Option<String>,
@@ -196,6 +200,7 @@ fn validate(conn: &Connection, input: &ObservationInput) -> DbResult<Observation
         standard_codes,
         tags,
         unit_session_id,
+        needs_guidance: input.needs_guidance,
     })
 }
 
@@ -219,7 +224,7 @@ pub fn get(conn: &Connection, media: &Path, id: &str) -> DbResult<Observation> {
     let mut o = conn
         .query_row(
             "SELECT o.id, o.class_id, o.observed_at, o.topic_book_id, o.note, o.created_at, o.updated_at, o.deleted_at,
-                    o.unit_session_id, us.title
+                    o.unit_session_id, us.title, o.needs_guidance
              FROM observations o LEFT JOIN unit_sessions us ON us.id = o.unit_session_id WHERE o.id = ?1",
             [id],
             |r| {
@@ -234,6 +239,7 @@ pub fn get(conn: &Connection, media: &Path, id: &str) -> DbResult<Observation> {
                     tags: vec![],
                     unit_session_id: r.get(8)?,
                     unit_session_title: r.get(9)?,
+                    needs_guidance: r.get::<_, i64>(10)? != 0,
                     created_at: r.get(5)?,
                     updated_at: r.get(6)?,
                     deleted_at: r.get(7)?,
@@ -276,9 +282,9 @@ pub fn create(conn: &mut Connection, media: &Path, input: &ObservationInput) -> 
     let now = now_iso();
     let tx = conn.transaction().db()?;
     tx.execute(
-        "INSERT INTO observations (id, class_id, observed_at, topic_book_id, note, created_at, updated_at, unit_session_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7)",
-        params![id, input.class_id, input.observed_at, input.topic_book_id, input.note, now, input.unit_session_id],
+        "INSERT INTO observations (id, class_id, observed_at, topic_book_id, note, created_at, updated_at, unit_session_id, needs_guidance)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7, ?8)",
+        params![id, input.class_id, input.observed_at, input.topic_book_id, input.note, now, input.unit_session_id, input.needs_guidance as i64],
     )
     .db()?;
     replace_children(&tx, &id, &input)?;
@@ -297,8 +303,8 @@ pub fn update(conn: &mut Connection, media: &Path, id: &str, input: &Observation
     let input = validate(conn, input)?;
     let tx = conn.transaction().db()?;
     tx.execute(
-        "UPDATE observations SET observed_at = ?2, topic_book_id = ?3, note = ?4, updated_at = ?5, unit_session_id = ?6 WHERE id = ?1",
-        params![id, input.observed_at, input.topic_book_id, input.note, now_iso(), input.unit_session_id],
+        "UPDATE observations SET observed_at = ?2, topic_book_id = ?3, note = ?4, updated_at = ?5, unit_session_id = ?6, needs_guidance = ?7 WHERE id = ?1",
+        params![id, input.observed_at, input.topic_book_id, input.note, now_iso(), input.unit_session_id, input.needs_guidance as i64],
     )
     .db()?;
     replace_children(&tx, id, &input)?;
@@ -573,6 +579,7 @@ pub mod tests {
             standard_codes: vec!["[2바01-01]".to_string()],
             tags: vec!["협력".to_string()],
             unit_session_id: None,
+            needs_guidance: false,
         }
     }
 

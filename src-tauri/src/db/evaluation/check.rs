@@ -39,6 +39,8 @@ pub struct DraftCheck {
     pub length: Option<Warning>,
     /// 문장이 하나 이상이고, 모든 문장이 글자가 있고 묶음에 있는 근거를 하나 이상 가리킨다.
     pub can_confirm: bool,
+    /// 모든 문장에 「근거 확인」이 체크되었다(확정의 또 다른 조건).
+    pub all_reviewed: bool,
 }
 
 pub fn total_chars(sentences: &[Sentence]) -> usize {
@@ -154,5 +156,5 @@ pub fn check_draft(sentences: &[Sentence], bundle: &Bundle, forbidden: &Forbidde
     } else {
         None
     };
-    DraftCheck { sentences: per, total_chars: total, length, can_confirm }
+    DraftCheck { sentences: per, total_chars: total, length, can_confirm, all_reviewed: !sentences.is_empty() && sentences.iter().all(|s| s.reviewed) }
 }
