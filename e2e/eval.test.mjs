@@ -93,15 +93,19 @@ describe('화면 E2E 3부(통합 평어·진단 파일)', { concurrency: false }
     return el;
   };
 
-  /** 「근거 확인」 체크(설계 24): 범위 안의 체크를 모두 켠다. 확정 단추는 그 전에는 꺼져 있어야 한다. */
-  const reviewAll = async (scope, what) => {
-    const labels = `${scope}//label[contains(@class,'ev-review')][contains(normalize-space(.),'근거 확인')]`;
-    const n = (await driver.findElements(By.xpath(labels))).length;
-    assert.ok(n > 0, `${what}에 「근거 확인」 체크가 없음`);
-    const confirm = await waitVisible(driver, `${scope}//button[normalize-space(.)='확정']`, WAIT, `${what} 「확정」`);
-    assert.equal(await confirm.isEnabled(), false, `${what}: 「근거 확인」 전에는 「확정」이 꺼져 있어야 함`);
-    for (let i = 1; i <= n; i += 1) await click(driver, `(${labels})[${i}]`);
-    await driver.wait(async () => (await driver.findElements(By.xpath(`${labels}[contains(@class,' on')]`))).length === n, WAIT, `${what}의 「근거 확인」이 모두 켜지지 않음`);
+  const STEP_NAV = "//nav[@aria-label='진행 단계']";
+  const ROW = (name) => `//button[contains(@class,'es-row-btn')][contains(.,'${name}')]`;
+  const CHECK_BTN = "//button[normalize-space(.)='맞아요, 확인했어요']";
+
+  /** 3단계(설계 25): 확정 단추는 확인이 남아 있는 동안 「N번 문장 확인 필요」이고, 문장마다 「맞아요, 확인했어요」를 눌러 끝낸다. */
+  const reviewSentences = async (scope, what) => {
+    await waitVisible(driver, `${scope}//*[contains(@class,'es-sentence-meta')]`, WAIT, `${what} 문장 확인 화면`);
+    const meta = await driver.findElement(By.xpath(`${scope}//*[contains(@class,'es-sentence-meta')]`)).getText();
+    const total = Number(/\/\s*(\d+)/.exec(meta)?.[1] ?? '0');
+    assert.ok(total > 0, `${what}에 확인할 문장이 없음: ${meta}`);
+    for (let i = 0; i < total; i += 1) await click(driver, `${scope}${CHECK_BTN}`);
+    // 모두 확인하면 4단계(확정 · 복사)로 넘어간다.
+    await waitVisible(driver, `${scope}//button[normalize-space(.)='확정']`, WAIT, `${what} 「확정」`);
   };
 
   const inputValue = async (xpath) => (await driver.findElement(By.xpath(xpath))).getAttribute('value');
@@ -138,11 +142,12 @@ describe('화면 E2E 3부(통합 평어·진단 파일)', { concurrency: false }
     await expectNoErrors();
   });
 
-  scenario('2. 평어 탭: 기간을 정하고 교과마다 템플릿 초안을 만들어 확정한다', async () => {
+  scenario('2. 평어 탭: 기간을 정하고 교과마다 학생을 열어 템플릿 초안을 만들고 문장마다 확인해 확정한다', async () => {
     await click(driver, tab('평어'));
-    await waitVisible(driver, "//h2[contains(.,'평어 (생활기록부 초안)')]");
+    await waitVisible(driver, "//h2[normalize-space(.)='평어']");
     // 기간: 오늘이 들어 있는 해 전체(학기 기본값은 날짜에 따라 오늘이 빠질 수 있다).
     const year = new Date().getFullYear();
+    await click(driver, "//button[@aria-controls='es-period-panel']");
     const from = "//label[contains(normalize-space(.),'시작일')]//input";
     const to = "//label[contains(normalize-space(.),'끝일')]//input";
     await waitVisible(driver, from);
@@ -156,19 +161,29 @@ describe('화면 E2E 3부(통합 평어·진단 파일)', { concurrency: false }
       );
     }
     await driver.wait(async () => (await inputValue(from)) === `${year}-01-01` && (await inputValue(to)) === `${year}-12-31`, WAIT, '기간이 정해지지 않음');
+    await click(driver, "//section[@id='es-period-panel']//button[normalize-space(.)='닫기']");
 
-    const side = `//aside[@aria-label='학생 목록']//button[contains(.,'${STUDENT}')]`;
     for (const subject of SUBJECTS) {
       await click(driver, `//*[@role='group'][@aria-label='교과 선택']//button[normalize-space(.)='${subject}']`);
-      await click(driver, side);
-      const make = await enabledButton(`${EVAL_STUDENT}//button[contains(.,'초안 만들기')]`, `${subject} 「초안 만들기」`);
+      await click(driver, ROW(STUDENT));
+      await waitVisible(driver, EVAL_STUDENT, WAIT, `${subject} 학생 단계 화면`);
+      // 1단계(근거 고르기) → 2단계(초안 만들기)
+      await click(driver, xButton('다음: 초안 만들기'));
+      const make = await enabledButton(`${EVAL_STUDENT}//button[normalize-space(.)='초안 만들기']`, `${subject} 「초안 만들기」`);
       await make.click();
       await waitVisible(driver, `${EVAL_STUDENT}//*[@role='status'][contains(.,'템플릿으로 초안을 만들었습니다')]`, WAIT, `${subject} 템플릿 초안 안내`);
-      await reviewAll(EVAL_STUDENT, `${subject} 초안`);
+      await click(driver, xButton('이 초안으로 확인하기'));
+      // 3단계: 문장마다 확인하기 전에는 확정할 수 없다
+      const unreviewed = await waitVisible(driver, CHECK_BTN, WAIT, `${subject} 「맞아요, 확인했어요」`);
+      assert.ok(await unreviewed.isDisplayed());
+      assert.equal((await driver.findElements(By.xpath(`${EVAL_STUDENT}//button[normalize-space(.)='확정']`))).length, 0, `${subject}: 문장 확인 전에는 「확정」 단추가 없어야 함`);
+      await reviewSentences(EVAL_STUDENT, `${subject} 초안`);
       const confirm = await enabledButton(`${EVAL_STUDENT}//button[normalize-space(.)='확정']`, `${subject} 「확정」`);
       await confirm.click();
       await waitVisible(driver, `${EVAL_STUDENT}//span[contains(@class,'ev-status-confirmed')]`, WAIT, `${subject} 확정 표시`);
       console.log(`[e2e] ${subject} 평어 확정`);
+      await click(driver, xButton('← 평어 목록'));
+      await waitVisible(driver, ROW(STUDENT), WAIT, '평어 목록');
     }
     await expectNoErrors();
   });
@@ -185,11 +200,19 @@ describe('화면 E2E 3부(통합 평어·진단 파일)', { concurrency: false }
     const perSubject = [];
     for (const subject of SUBJECTS) {
       await click(driver, `//*[@role='group'][@aria-label='교과 선택']//button[normalize-space(.)='${subject}']`);
+      await click(driver, ROW(STUDENT));
+      // 확정한 학생은 4단계(확정 · 복사)에서 열린다.
       await waitVisible(driver, `${EVAL_STUDENT}//span[contains(@class,'ev-status-confirmed')]`, WAIT, `${subject} 확정 표시`);
       const sentences = await draftText();
       assert.ok(sentences.length > 0, `${subject} 확정 문장이 화면에 없음`);
       perSubject.push(sentences);
+      await click(driver, xButton('← 평어 목록'));
+      await waitVisible(driver, ROW(STUDENT), WAIT, '평어 목록');
     }
+    await click(driver, `//*[@role='group'][@aria-label='평어 종류']//button[normalize-space(.)='통합본']`);
+    await click(driver, ROW(STUDENT));
+    await waitVisible(driver, COMBINED, WAIT, '통합본 단계 화면');
+    await click(driver, xButton('다음: 합치기'));
     const combine = await enabledButton(xButton('세 교과 합치기'), '「세 교과 합치기」');
     await combine.click();
     await waitVisible(driver, COMBINED_TEXT, WAIT, '통합본 글상자');
@@ -205,7 +228,9 @@ describe('화면 E2E 3부(통합 평어·진단 파일)', { concurrency: false }
   });
 
   scenario('4. 통합본 확정 → 복사: 복사한 글이 통합본과 같다', async () => {
-    await reviewAll(COMBINED, '통합본');
+    await click(driver, xButton('다음: 전체 확인'));
+    // 통합본은 확인 하나(「맞아요, 확인했어요」)로 끝낸다. 확인하면 4단계로 넘어간다.
+    await click(driver, `${COMBINED}${CHECK_BTN}`);
     const confirm = await enabledButton(`${COMBINED}//button[normalize-space(.)='확정']`, '통합본 「확정」');
     await confirm.click();
     await waitVisible(driver, `${COMBINED}//span[contains(@class,'ev-status-confirmed')]`, WAIT, '통합본 확정 표시');
@@ -222,9 +247,10 @@ describe('화면 E2E 3부(통합 평어·진단 파일)', { concurrency: false }
 
   scenario('5. 학급 내보내기 「통합본(NEIS용)」: BOM과 머리 줄, 통합본 줄', async () => {
     const out = path.join(filesDir, 'neis.txt');
-    await click(driver, `//*[@role='group'][@aria-label='내보내기 형식']//button[normalize-space(.)='통합본(NEIS용)']`);
+    await click(driver, xButton('← 평어 목록'));
+    await click(driver, "//button[@aria-haspopup='menu']");
     queueDialog(dialogDir, 'save', [out]);
-    await click(driver, xButton('학급 확정본 내보내기 (.txt)'));
+    await click(driver, "//button[@role='menuitem'][normalize-space(.)='통합본(NEIS용) 내보내기 (.txt)']");
     await driver.wait(() => fs.existsSync(out) && fs.statSync(out).size > 0, WAIT, '내보낸 txt 파일이 만들어지지 않음');
     await waitVisible(driver, "//*[@role='status'][contains(.,'통합본 1건을 저장했습니다')]", WAIT, '내보내기 완료 안내');
     const bytes = fs.readFileSync(out);
