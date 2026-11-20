@@ -4,8 +4,8 @@
 
 소스 코드 안내: 아래 Rust 크레이트는 수정하지 않고 사용했으며, 각 크레이트의 소스 코드는 아래에 적힌 이름과 버전으로 https://crates.io 에서 받을 수 있습니다. Mozilla Public License 2.0(MPL-2.0) 구성 요소도 같은 곳에서 원본 소스를 받을 수 있습니다.
 
-- Cargo.lock SHA-256: `e7a46a846a48e1d35efbc042ece1fada7143974a0bc21b188433a87b8e88f491`
-- package-lock.json SHA-256: `4f9392fe1c63ded28f2553769821fc6a902b2da3e7ebbded924b93b942bb5575`
+- Cargo.lock SHA-256: `96a1ff6d1d4ad1a425d2fcdf8743842cf4d292b4c37c91c4d7bfa8f7517aa65e`
+- package-lock.json SHA-256: `05207036d1e0ddc7012bfaefc820f582c9e41b4476a59db9a91e1205e493de48`
 
 ---
 
